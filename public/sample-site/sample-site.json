@@ -1,0 +1,333 @@
+{
+  "name": "DGOC sample site (synthetic)",
+  "disclaimer": "Synthetic teaching site. Not a real project. Loads and clearances are INDICATIVE sample values, not sourced data.",
+  "units": "m",
+  "origin": "SW corner of plot = (0,0); +x east, +y north",
+  "dxf_entities_used": [
+    "LINE",
+    "ARC",
+    "LWPOLYLINE",
+    "CIRCLE",
+    "TEXT"
+  ],
+  "plot_boundary": {
+    "layer": "SITE_BOUNDARY",
+    "w": 90.0,
+    "d": 72.0,
+    "ne_corner_arc_r": 10.0
+  },
+  "footprints": {
+    "tower_a": {
+      "layer": "BUILDING_PROPOSED",
+      "label": "TOWER A  G+24  75.0 m",
+      "polygon": [
+        [
+          25,
+          20
+        ],
+        [
+          65,
+          20
+        ],
+        [
+          65,
+          42
+        ],
+        [
+          25,
+          42
+        ]
+      ],
+      "height_m": 75.0
+    },
+    "podium": {
+      "layer": "BUILDING_PROPOSED",
+      "label": "PODIUM  2 levels  9.0 m",
+      "polygon": [
+        [
+          15,
+          12
+        ],
+        [
+          75,
+          12
+        ],
+        [
+          75,
+          50
+        ],
+        [
+          15,
+          50
+        ]
+      ],
+      "height_m": 9.0
+    },
+    "tower_b": {
+      "layer": "BUILDING_PROPOSED",
+      "label": "TOWER B  G+14  45.0 m",
+      "polygon": [
+        [
+          50,
+          54
+        ],
+        [
+          70,
+          54
+        ],
+        [
+          70,
+          68
+        ],
+        [
+          50,
+          68
+        ]
+      ],
+      "height_m": 45.0
+    },
+    "site_office": {
+      "layer": "TEMP_WORKS",
+      "label": "SITE OFFICE  3.0 m",
+      "polygon": [
+        [
+          76,
+          56
+        ],
+        [
+          86,
+          56
+        ],
+        [
+          86,
+          66
+        ],
+        [
+          76,
+          66
+        ]
+      ],
+      "height_m": 3.0
+    },
+    "nb_east": {
+      "layer": "NEIGHBOUR",
+      "label": "NEIGHBOUR - RESIDENTIAL  30.0 m",
+      "polygon": [
+        [
+          96,
+          8
+        ],
+        [
+          122,
+          8
+        ],
+        [
+          122,
+          42
+        ],
+        [
+          96,
+          42
+        ]
+      ],
+      "height_m": 30.0
+    },
+    "nb_north": {
+      "layer": "NEIGHBOUR",
+      "label": "NEIGHBOUR - SCHOOL  12.0 m  (NO OVERSAIL)",
+      "polygon": [
+        [
+          8,
+          78
+        ],
+        [
+          52,
+          78
+        ],
+        [
+          52,
+          96
+        ],
+        [
+          8,
+          96
+        ]
+      ],
+      "height_m": 12.0
+    },
+    "rebar_yard": {
+      "layer": "SUPPLY_ZONE",
+      "label": "S1 REBAR YARD",
+      "polygon": [
+        [
+          18,
+          2
+        ],
+        [
+          34,
+          2
+        ],
+        [
+          34,
+          9
+        ],
+        [
+          18,
+          9
+        ]
+      ],
+      "height_m": 0.0
+    },
+    "formwork": {
+      "layer": "SUPPLY_ZONE",
+      "label": "S2 FORMWORK STORE",
+      "polygon": [
+        [
+          78,
+          4
+        ],
+        [
+          88,
+          4
+        ],
+        [
+          88,
+          22
+        ],
+        [
+          78,
+          22
+        ]
+      ],
+      "height_m": 0.0
+    },
+    "pump": {
+      "layer": "SUPPLY_ZONE",
+      "label": "S3 CONCRETE PUMP / BUCKET FILL",
+      "polygon": [
+        [
+          2,
+          38
+        ],
+        [
+          10,
+          38
+        ],
+        [
+          10,
+          52
+        ],
+        [
+          2,
+          52
+        ]
+      ],
+      "height_m": 0.0
+    }
+  },
+  "no_go": [
+    {
+      "id": "well",
+      "center": [
+        7.0,
+        64.0
+      ],
+      "radius_m": 4.0
+    }
+  ],
+  "road": {
+    "layer": "ROAD",
+    "y_from": -20.0,
+    "y_to": -2.0,
+    "rule": "no load over carriageway"
+  },
+  "power_line": {
+    "layer": "POWER_LINE",
+    "x": -9.0,
+    "voltage_kv": 22,
+    "clearance_m": 6.0,
+    "clearance_note": "INDICATIVE sample value; the real figure comes from the local electricity authority"
+  },
+  "no_oversail": [
+    "nb_north"
+  ],
+  "oversail_by_permission": [
+    "nb_east"
+  ],
+  "picks": [
+    {
+      "id": "P1",
+      "what": "rebar bundle",
+      "load_t": 2.0,
+      "from": "S1",
+      "from_xy": [
+        26,
+        5.5
+      ],
+      "to_xy": [
+        62,
+        39
+      ]
+    },
+    {
+      "id": "P2",
+      "what": "formwork panel",
+      "load_t": 1.5,
+      "from": "S2",
+      "from_xy": [
+        83,
+        13
+      ],
+      "to_xy": [
+        28,
+        23
+      ]
+    },
+    {
+      "id": "P3",
+      "what": "concrete bucket (full)",
+      "load_t": 2.6,
+      "from": "S3",
+      "from_xy": [
+        6,
+        45
+      ],
+      "to_xy": [
+        64,
+        41
+      ]
+    },
+    {
+      "id": "P4",
+      "what": "MEP plant skid (heaviest)",
+      "load_t": 4.2,
+      "from": "S1",
+      "from_xy": [
+        33,
+        8
+      ],
+      "to_xy": [
+        38,
+        25
+      ]
+    },
+    {
+      "id": "P5",
+      "what": "tower B rebar bundle (farthest)",
+      "load_t": 1.8,
+      "from": "S2",
+      "from_xy": [
+        85,
+        20
+      ],
+      "to_xy": [
+        68,
+        66
+      ]
+    }
+  ],
+  "png_underlay": {
+    "file": "sample-site.png",
+    "scale_bar": "0-20 m, bottom right; use its two ends for two-point calibration"
+  }
+}

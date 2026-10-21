@@ -1,3 +1,5 @@
+> **DGOC Crane Planner fork.** This repository is DGOC's crane-planning build on top of Chili3D (AGPL-3.0). Start with [CRANE-PLANNER.md](CRANE-PLANNER.md). Live at https://craneplan.dgoc.in.
+
 # Chili3D
 
 A browser-based 3D CAD application for online model design and editing.

@@ -78,3 +78,13 @@ OCCT v8.0.0 → `chili-wasm.wasm` via Emscripten. `cpp/src/`: `factory.cpp` (sha
 ## Git
 
 Commits: `<emoji> <type>(<scope>): <description>` — ✨ `feat` · 🐛 `fix` · ♻️ `refactor` · ✅ `test` · 📝 `docs` · 💄 `style` · 🔧 `chore`. Scope = package name. Active branch: `dev` → PR to `main`.
+
+## DGOC Crane Planner rules (this fork)
+
+This fork builds two crane-planning plugins; read `CRANE-PLANNER.md` first. Rules for any AI agent working here:
+
+- Put new work in `plugins/site-model/`, `plugins/tower-planner/` or `plugins/mobile-planner/`. Do not edit `packages/*` unless the task explicitly requires it.
+- Never invent crane specifications, load-chart values, standards clauses or clearance distances. Every number needs a cited source (document + page) or must be labelled `INDICATIVE` in data and UI. If a request asks for an unsourced number, implement it as a clearly labelled parameter and say so.
+- The UI and every report must show: "Planning aid, not a certified lift plan."
+- Write tests alongside every calculation, with at least one case worked out by hand in the test's comment.
+- Do not commit as a generic identity; the human author commits under their own name.
