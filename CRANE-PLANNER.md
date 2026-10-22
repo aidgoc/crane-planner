@@ -51,4 +51,8 @@ npm run test
 npm run check      # Biome lint, run before every commit
 ```
 
+**Windows / setup notes (from your Step 0 spikes):** use Node 24 (Node 22.14 warns: lint-staged wants ≥ 22.22.1). If `npm install` fails with `ECONNRESET` or `EPERM` on `node_modules`, close editors and dev servers that hold file locks, then run `npm install --fetch-retries=5 --fetch-retry-mintimeout=20000 --fetch-retry-maxtimeout=120000`. Prove your spike by loading a plugin in the browser: run `npm run dev`, then build and serve `plugins/helloworld-ts` (see its `preview` script) and open `http://localhost:8080?plugin=http://localhost:8686`. Your console should show the plugin loading.
+
+The frozen task list with acceptance tests is in [BACKLOG.md](BACKLOG.md).
+
 Keep upstream Chili3D changes flowing: `git fetch upstream && git merge upstream/main`. Only the tech lead (DGOC) does this.
