@@ -33,6 +33,7 @@ const targetBase = cliOpts.output || path.join(rootDir, "dist", "plugins");
 
 const PLUGINS = [
     { name: "macro", dir: path.join(pluginsBase, "macro") },
+    { name: "mobile-planner", dir: path.join(pluginsBase, "mobile-planner") },
     { name: "visual-programming", dir: path.join(pluginsBase, "visual-programming") },
 ];
 
