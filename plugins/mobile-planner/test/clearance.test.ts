@@ -7,7 +7,7 @@
 // Owner: Abhishek
 // ============================================================================
 
-import type { IShapeFactory } from "@chili3d/core";
+import { type IShapeFactory, XYZ } from "@chili3d/core";
 import { ShapeFactory } from "@chili3d/wasm";
 import {
     computeClearanceDistance,
@@ -178,6 +178,34 @@ describe("Task M5: 3D Boom Clearance Distance Dry Run", () => {
         const result = computeClearanceDistance(building, boom, failing);
 
         expect(result.isCollision).toBe(true);
+        expect(result.isTouching).toBe(false);
+    });
+
+    /**
+     * Case 7: INCLINED boom (every case above is vertical, M6 needs angled booms)
+     *
+     * Hand-worked calculation:
+     * - Building Box: X, Y in [0, 10] m, Z in [0, 20] m. Its +X face is the plane X = 10 m.
+     * - Boom Cylinder: radius r = 0.5 m, base centre (12.5, 5, 5) m, axis tilted 45 degrees from
+     *   vertical towards +X: direction (1, 0, 1) / sqrt(2). The axis runs up and away from the
+     *   building, so the cylinder point nearest the +X face is on the base-disc rim.
+     * - The base disc lies in the plane spanned by (-1, 0, 1) / sqrt(2) and (0, 1, 0). Its rim point
+     *   with the smallest X is the base centre + r * (-1, 0, 1) / sqrt(2):
+     *   X_min = 12.5 - 0.5 / sqrt(2) = 12.5 - 0.35355 = 12.14645 m, at Y = 5 m, Z = 5.35355 m.
+     *   Y and Z lie inside the face, so the nearest box point is straight across on X = 10.
+     * - Minimum distance = 12.14645 - 10.0 = 2.14645 m (2,146.45 mm).
+     *   A vertical boom at the same centre would give 2.00 m, so this proves the tilt is used.
+     */
+    test("Case 7: inclined boom (45 degrees) reports the hand-worked 2.146 m", () => {
+        const building = createBuildingBox(factory, { x: 0, y: 0, z: 0 }, { dx: 10, dy: 10, dz: 20 });
+        const tilt = new XYZ({ x: Math.SQRT1_2, y: 0, z: Math.SQRT1_2 });
+        const boom = createBoomCylinder(factory, { x: 12.5, y: 5.0, z: 5.0 }, 0.5, 15, tilt);
+
+        const result = computeClearanceDistance(building, boom, factory);
+
+        expect(result.distanceM).toBeCloseTo(2.14645, 3);
+        expect(result.distanceMm).toBeCloseTo(2146.45, 0);
+        expect(result.isCollision).toBe(false);
         expect(result.isTouching).toBe(false);
     });
 });
