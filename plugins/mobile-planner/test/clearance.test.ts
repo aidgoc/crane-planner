@@ -24,8 +24,8 @@ describe("Task M5: 3D Boom Clearance Distance Dry Run", () => {
     });
 
     /**
-     * S2 / Rule: Units consistency check.
-     * Verify that a 40 m building dimension translates to 40,000 mm in Chili3D CAD kernel.
+     * M5 units check (CRANE-PLANNER.md rule: convert once at the plugin boundary).
+     * Verify that a 40 m building dimension translates to 40,000 mm in the Chili3D CAD kernel.
      */
     test("Units test: 40 m dimension converts to 40,000 mm in the CAD scene", () => {
         // Hand calculation:
