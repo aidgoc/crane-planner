@@ -34,10 +34,13 @@ export const KIT = Object.freeze({
     PIVOT_OFFSET_M: 0.8,
     chart,
     source: Object.freeze({
-        document: "Grove GMK5250L-1 load chart, official manufacturer download",
+        document: "Grove GMK5250L-1 load chart, page 17",
+        title: "2025-02-11_KB_MTW_PG_GMK5250L-1_V2.indd",
+        craneModel: "Grove GMK5250L-1",
         url: "https://www.manitowoc.com/media/15016/download",
         page: 17,
-        status: "INDICATIVE",
+        revision: "2025-02-11 / V2",
+        status: "VERIFIED",
     }),
 });
 

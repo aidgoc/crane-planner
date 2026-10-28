@@ -10,10 +10,13 @@ describe("mobile crane KIT", () => {
         expect(KIT.name).toBe("Grove GMK5250L-1");
         expect(KIT.PIVOT_OFFSET_M).toBe(0.8);
         expect(KIT.source).toEqual({
-            document: "Grove GMK5250L-1 load chart, official manufacturer download",
+            document: "Grove GMK5250L-1 load chart, page 17",
+            title: "2025-02-11_KB_MTW_PG_GMK5250L-1_V2.indd",
+            craneModel: "Grove GMK5250L-1",
             url: "https://www.manitowoc.com/media/15016/download",
             page: 17,
-            status: "INDICATIVE",
+            revision: "2025-02-11 / V2",
+            status: "VERIFIED",
         });
     });
 
@@ -25,6 +28,15 @@ describe("mobile crane KIT", () => {
 
     test("keeps the 70 m / 30 m chart cell at 12.1 t", () => {
         expect(capacityAt(70, 30)).toBeCloseTo(12.1, 6);
+    });
+
+    test("interpolates the 38 m boom row at an off-grid 11 m radius", () => {
+        // The 10 m and 12 m chart cells are 53 t and 47.5 t: (53 + 47.5) / 2 = 50.25 t.
+        const capacity = capacityAt(38, 11);
+
+        expect(capacity).toBeCloseTo(50.25, 6);
+        expect(capacity).not.toBe(53);
+        expect(capacity).not.toBe(47.5);
     });
 
     test.each([
