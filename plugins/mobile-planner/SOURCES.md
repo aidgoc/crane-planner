@@ -20,3 +20,6 @@ KIT, but are **not claimed as independently verified** against the PDF.
 | 59.0, 58.5, 53.0, 47.5, 40.0, 30.5, 17.2 t | 38.0 m row, radii 5/8/10/12/15/20/30 m | Grove GMK5250L-1 load chart, p. 17 | INDICATIVE |
 | 31.0, 31.0, 28.5, 23.5, 15.0 t | 52.4 m row, radii 10/12/15/20/30 m | Grove GMK5250L-1 load chart, p. 17 | INDICATIVE |
 | 14.5, 14.5, 14.5, 12.1 t | 70.0 m row, radii 12/15/20/30 m | Grove GMK5250L-1 load chart, p. 17 | INDICATIVE |
+| User inputs | Total weight W, length spread L, width spread B, eccentricity | Backlog item M3 specification (no invented crane dimensions) | USER INPUT / PARAMETER |
+| Rigid plate statics: R_i = W/4 ± W*e_x/(2L) ± W*e_y/(2B) | Pad reaction equilibrium model | Classical statics equilibrium: sum F_z = W, sum M_x = W*e_y, sum M_y = W*e_x | STANDARD STATICS |
+
