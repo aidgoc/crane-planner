@@ -58,6 +58,25 @@ async function copyDir(src, dest) {
     }
 }
 
+/**
+ * Recursively list PDF files under a directory. Source PDFs stay in the
+ * plugin's docs/ directory; they must never reach the distributable package
+ * unless redistribution has been cleared.
+ */
+async function findPdfFiles(dir) {
+    const pdfs = [];
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            pdfs.push(...(await findPdfFiles(fullPath)));
+        } else if (entry.name.toLowerCase().endsWith(".pdf")) {
+            pdfs.push(fullPath);
+        }
+    }
+    return pdfs;
+}
+
 async function main() {
     console.log(`[build-plugins] Plugins source: ${pluginsBase}`);
     console.log(`[build-plugins] Output target:  ${targetBase}`);
@@ -88,6 +107,17 @@ async function main() {
             await copyDir(pluginDist, path.join(targetDir, "dist"));
             await copyDir(icons, path.join(targetDir, "icons"));
             await cp(manifest, path.join(targetDir, "manifest.json"));
+
+            // The copy list above deliberately excludes docs/. Fail loudly if a
+            // PDF ever appears in the distributable through a future change.
+            const pdfs = await findPdfFiles(targetDir);
+            if (pdfs.length > 0) {
+                throw new Error(
+                    `Refusing to package PDFs in ${targetDir}: ${pdfs.join(", ")}. ` +
+                        "Remove them from the distributable or confirm redistribution permission first.",
+                );
+            }
+
             console.log(`[build-plugins] ✅ ${plugin.name} built and copied\n`);
         } catch (err) {
             console.error(`[build-plugins] ❌ Failed to copy output for ${plugin.name}: ${err.message}`);

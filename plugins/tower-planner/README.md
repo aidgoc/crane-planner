@@ -1,12 +1,42 @@
-# Tower Planner Plugin
+# DGOC Tower Crane Planner plugin
 
-Tower crane planning aid for Cycle 4.
+Sourced tower-crane catalogue, capacity model, placement and clearance checks for the DGOC Crane
+Planner. The catalogue contains two verified entries:
 
-## T6 clearance kernel
+- **Potain MCT 88** (EN 14439 C25) — Cycle 2 idealised tip-load model.
+- **Potain MCT 85 F5** (FEM 1.001-A3) — published per-radius load-chart lookup.
 
-Pure TypeScript helpers in `src/geometry/clearance.ts` for sample-site clearance checks. The kernel covers point-in-polygon, distances, a swing circle versus polygon, and `checkAnnulusPolygonIntersection` for a radial band (inner/outer radius) versus polygon, including edges that cross the band and polygons that enclose it. See `test/clearance.test.ts` for worked examples.
+> **Planning aid, not a certified lift plan.**
 
-## T7 placement and rings
+## What is here
+
+| Path | Purpose |
+| --- | --- |
+| `data/crane-catalogue.json` | Crane data. Every number carries a source (document + page) or is explicitly `INDICATIVE`. |
+| `src/catalogueValidator.ts` | Strict JSON validator. Rejects bare numbers, unknown sources, malformed tip tables and malformed load charts. |
+| `src/catalogue.ts` | Validates the JSON at module load and exposes `MCT88`, `MCT85F5`, `TOWER_CRANES` and `getCraneById`. |
+| `src/capacity.ts` | MCT 88 tip-load model, MCT 85 F5 chart lookup and the `SIMULATED` wind rule. |
+| `src/pickEngine.ts` | UI-independent pick evaluation, utilisation, PASS/FAIL and crane filtering. |
+| `src/units.ts` | One-way metre → millimetre conversion for the Chili3D scene boundary. |
+| `src/command.ts` | Three-pick sample dialog for the selected catalogue crane. |
+| `src/commands/placeCrane.ts` | `Place Tower Crane` command that opens the live placement panel. |
+| `src/model/cranePlacement.ts` | Placement/ring geometry and the INDICATIVE T7 catalogue defaults. |
+| `src/geometry/clearance.ts` | Pure T6 clearance kernel: point-in-polygon, distances, swing circle versus polygon and annulus/band versus polygon. |
+| `src/ui/placementPanel.ts` | Live float panel for mast position, slew and INDICATIVE radii. |
+| `src/view/craneScene.ts` | Three.js rings, jib and counter-jib scene for the placement panel. |
+| `docs/SOURCES.md` | Source table, page convention, capacity methods, ambiguities and limitations. |
+
+## Placement, clearance and rings (T6/T7)
+
+### T6 clearance kernel
+
+Pure TypeScript helpers in `src/geometry/clearance.ts` for sample-site clearance checks. The kernel
+covers point-in-polygon, distances, a swing circle versus polygon, and
+`checkAnnulusPolygonIntersection` for a radial band (inner/outer radius) versus polygon, including
+edges that cross the band and polygons that enclose it. See `test/clearance.test.ts` for worked
+examples.
+
+### T7 placement and rings
 
 `Place Tower Crane` opens a live float panel and draws:
 
@@ -16,8 +46,128 @@ Pure TypeScript helpers in `src/geometry/clearance.ts` for sample-site clearance
 - fixed 20 m base-exclusion ring (dashed grey)
 - jib, counter-jib and mast marker
 
-Drag the mast marker in the viewport, type mast coordinates, or move the slew slider. Every change updates the rings and result panel immediately; there is no Calculate button.
+Drag the mast marker in the viewport, type mast coordinates, or move the slew slider. Every change
+updates the rings and result panel immediately; there is no Calculate button.
 
-All catalogue dimensions are placeholders marked `INDICATIVE`. They are not sourced crane data. Replace them from the applicable load chart and cite the document and page before using the result.
+The T7 placement panel's internal catalogue dimensions are placeholders marked `INDICATIVE`; they are
+not sourced crane data. The catalogue/capacity module uses the sourced values documented under
+**Crane data** below. Replace placement defaults from the applicable load chart and cite the document
+and page before using the result.
 
 **Planning aid, not a certified lift plan.**
+
+## Crane data
+
+| Crane | Standard (as printed) | Max capacity | Max working jib | Minimum radius | Default jib | Capacity source |
+| --- | --- | --- | --- | --- | --- | --- |
+| Potain MCT 88 | EN 14439 C25 | 5 t | 53.1 m | n/a (idealised model) | 30 m (`INDICATIVE`) | Tip-load labels, datasheet p. 1 |
+| Potain MCT 85 F5 | FEM 1.001-A3 | 5 t | 52 m | 2.7 m (printed) | 30 m (`INDICATIVE`) | Per-radius chart, datasheet p. 3 |
+
+For the MCT 85 F5, 53.1 m is the overall tip length, not a working jib configuration. The published
+working configurations are 20, 25, 30, 35, 40, 45, 50 and 52 m.
+
+## Capacity models
+
+### MCT 88 — idealised tip-load model
+
+For an installed jib length `L` and hook radius `r`, with published tip load `T(L)`:
+
+- Rated moment `M = T(L) × L`.
+- Corner radius `r_c = M / maximum capacity`.
+- `capacity(r) = maximum capacity` for `r <= r_c`.
+- `capacity(r) = M / r` for `r_c < r <= L`.
+- `capacity(r) = null` for `r > L`.
+
+This two-piece curve is the Cycle 2 project idealisation, **not** a manufacturer equation. For the
+MCT 88 with a 30 m jib it gives `M = 81 t·m`, `r_c = 16.2 m`, and `capacity(30 m) = 2.70 t`.
+
+### MCT 85 F5 — published chart lookup
+
+The MCT 85 F5 uses its own manufacturer chart, not the MCT 88 formula:
+
+- The installed jib must be exactly one of the eight published configurations; otherwise the result
+  is `INVALID`.
+- The printed minimum hook radius is 2.7 m and is stored on every chart row. A radius below 2.7 m is
+  `OUT_OF_RANGE`; the 5 t plateau does not extend below the published minimum.
+- The base capacity is read from that jib's chart row. From 2.7 m to the first stored point the 5 t
+  plateau applies; the first stored point is the end of the plateau, not the minimum radius.
+- Between chart points, the capacity at the **next larger radius** is used (the lower bounding value).
+  This cannot overstate the published capacity, though it may understate it between points.
+- There is no extrapolation beyond the last published radius.
+- The chart is the 5 t hook curve; the dashed 2.5 t-hook variant is not modelled.
+
+For example, on the 30 m jib, 19 m returns 3.9 t (the 20 m point), not the linearly interpolated
+4.48 t; 24 m returns 3.0 t (the 25 m point); 28 m returns 2.5 t (the 29 m point).
+
+### Wind
+
+The optional wind rule multiplies the base capacity by 0.8 at 20 km/h or above. It is labelled
+`SIMULATED` in the code and UI and is not claimed to be EN 14439 Table 7 or a manufacturer rule. It is
+applied once, after the crane-specific base capacity. A blank or `null` wind means no derate; a
+negative or non-finite wind is `INVALID` with issue `invalid-wind` instead of being treated as calm.
+
+## Sample picks
+
+Both tables use the catalogue default 30 m jib.
+
+**MCT 88**
+
+| Pick | Load | Radius | Capacity | Utilisation | Result |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 2.5 t | 20 m | 4.05 t | 61.7 % | PASS |
+| 2 | 3.0 t | 25 m | 3.24 t | 92.6 % | PASS |
+| 3 | 4.0 t | 30 m | 2.70 t | 148.1 % | FAIL |
+
+The third row is the acceptance case from `BACKLOG.md`: a 4 t pick at 30 m on the 30 m jib must fail.
+
+**MCT 85 F5**
+
+| Pick | Load | Radius | Capacity | Utilisation | Result |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 2.5 t | 20 m | 3.90 t | 64.1 % | PASS |
+| 2 | 3.0 t | 25 m | 3.00 t | 100.0 % | PASS |
+| 3 | 4.0 t | 30 m | 2.50 t | 160.0 % | FAIL |
+
+## Heaviest erection component
+
+- **MCT 88:** counter-jib, 4.38 t (variant A), datasheet p. 6.
+- **MCT 85 F5:** counter-jib, 4.38 t (variant A, 14.6 m), datasheet p. 5; variant B is 4.25 t / 11.9 m.
+
+These are component-weight tables, not erection sequences. They do not state the lift radius, rigging
+or assembly order. Confirm the actual heaviest lift against the manufacturer's erection manual before
+use.
+
+## Build and test
+
+```bash
+npx rstest plugins/tower-planner/test
+npm run build -w tower-planner
+```
+
+The plugin is registered in `scripts/build-plugins.mjs` so the production build copies its
+`manifest.json`, `icons/` and `dist/` to `dist/plugins/tower-planner/`. The build does **not** copy
+`docs/`, so the source PDFs stay out of the distributable. The build fails if a PDF appears anywhere
+in the copied plugin directory.
+
+## Limitations
+
+- Only the two cranes above are catalogued. The Jaso J438PA.2R PDF was inspected but is not
+  catalogued: it is a luffing-jib crane, its chart is imperial-only, it contains multiple TD/2R
+  configurations with different capacities, and its packing list is not an erection sequence. See
+  [`docs/SOURCES.md`](docs/SOURCES.md) §6.
+- The 30 m default jib is `INDICATIVE` project configuration for both cranes, not a manufacturer
+  recommendation.
+- The model is not a structural, dynamic, reeving or ground-bearing check.
+- The MCT 88 source documents disagree about the 30 m tip value (2.70 t label vs 2.54 t imperial
+  conversion, and a 2.5 t point on the metric curve page). The load-curve page is also recorded as
+  p. 3 in the Cycle 2 copy and p. 4 in the local reference copy; that page-number ambiguity is
+  unresolved and is not guessed. The chosen value and the discrepancies are documented in
+  [`docs/SOURCES.md`](docs/SOURCES.md) §3.
+- The MCT 85 F5 p. 1 tip table labels 25 m as 3.0 t, while the p. 3 chart prints 3.02 t. The tip table
+  keeps the p. 1 label; the capacity lookup uses the p. 3 point.
+- `BACKLOG.md` refers to `docs/validation-calculation.txt`. No original was found in the working tree
+  or Git history; [`docs/validation-calculation.txt`](docs/validation-calculation.txt) is a clearly
+  labelled **reconstruction**, not the recovered original. See [`docs/SOURCES.md`](docs/SOURCES.md) §7.
+- The MCT 85 F5 and Jaso PDFs do not state a redistribution licence. Confirm the manufacturer's terms
+  before packaging or mirroring them. The PDFs are ignored by Git, and the production build copies
+  only `manifest.json`, `icons/` and `dist/`, so they are not in `dist/plugins/tower-planner/`.
