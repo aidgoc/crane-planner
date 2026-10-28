@@ -19,47 +19,35 @@ All public interface calculations and coordinates are in **metres (m)**, with co
 
 ## 2. API Usage for Teammates
 
-### Import
+### Calling it from a plugin
+
+Inside the running app, use the application's own shape factory. Do **not** create a `ShapeFactory` from
+`@chili3d/wasm` in plugin code: the app has already initialised the kernel, and a plugin must not bundle a
+second copy of it.
 
 ```typescript
-import {
-    computeClearanceDistance,
-    createBuildingBox,
-    createBoomCylinder,
-    type ClearanceResult
-} from "./clearance/distance";
+// from any file under plugins/mobile-planner/src/ (e.g. the M6 boom/load check)
+import { getCurrentApplication } from "@chili3d/core";
+import { computeClearanceDistance, createBoomCylinder, createBuildingBox } from "./clearance/distance";
+
+const factory = getCurrentApplication().shapeProvider.factory;
+
+// Building solid (origin and size in metres). Illustrative numbers, not site data.
+const buildingSolid = createBuildingBox(factory, { x: 0, y: 0, z: 0 }, { dx: 40, dy: 22, dz: 75 });
+
+// Boom solid (base centre, radius, length in metres, optional direction). Illustrative numbers.
+const boomSolid = createBoomCylinder(factory, { x: 42.5, y: 10, z: 0 }, 0.4, 35);
+
+const result = computeClearanceDistance(buildingSolid, boomSolid, factory);
+console.log(result.distanceM, result.isCollision, result.isTouching);
 ```
 
-### Computing Distance Between Two Solids
+`factory` is **required**. A minimum distance of 0 means "touching *or* overlapping"; the factory is what
+tells them apart (`booleanCommon` volume). If that boolean test fails or throws, the result is reported as a
+**collision**, never as "touching", so a planning aid cannot under-report a clash.
 
-```typescript
-import { ShapeFactory } from "@chili3d/wasm";
-import { computeClearanceDistance } from "@chili3d-crane/mobile-planner";
-
-const factory = new ShapeFactory();
-
-// Building solid (dimensions and origin in metres)
-const buildingSolid = createBuildingBox(
-    factory,
-    { x: 0, y: 0, z: 0 },
-    { dx: 40, dy: 22, dz: 75 } // Tower A: 40x22 m footprint, 75 m height
-);
-
-// Boom solid (cylinder: base center, radius, and length in metres)
-const boomSolid = createBoomCylinder(
-    factory,
-    { x: 42.5, y: 10, z: 0 }, // Positioned in metres
-    0.4,                      // 0.4 m boom radius
-    35                        // 35 m boom length
-);
-
-// Calculate 3D clearance
-const result: ClearanceResult = computeClearanceDistance(buildingSolid, boomSolid, factory);
-
-console.log(`Distance: ${result.distanceM} m`);
-console.log(`Collision: ${result.isCollision}`);
-console.log(`Touching: ${result.isTouching}`);
-```
+In unit tests there is no running app, so tests create `new ShapeFactory()` from `@chili3d/wasm` after
+`initWasm()` (see `test/setup.ts`).
 
 ### Return Type (`ClearanceResult`)
 
@@ -74,16 +62,21 @@ console.log(`Touching: ${result.isTouching}`);
 
 ## 3. Verified Acceptance Test Cases (Task M5)
 
-All 4 dry-run cases pass automated testing against OpenCASCADE with hand-worked verification:
+The 4 backlog dry-run cases, plus 2 safety cases, pass automated testing against OpenCASCADE with hand-worked verification:
 
 1. **2.0 m separation:** Box $[0, 10]\,\text{m}$, Cylinder center $X = 12.5\,\text{m}$, $R = 0.5\,\text{m}$.  
-   Nearest surface = $12.5 - 0.5 = 12.0\,\text{m}$. Distance $= 12.0 - 10.0 = \mathbf{2.00\,\text{m}}$ ($\pm 0.1\,\text{m}$). Verdict: `SAFE`.
+   Nearest surface = $12.5 - 0.5 = 12.0\,\text{m}$. Distance $= 12.0 - 10.0 = \mathbf{2.00\,\text{m}}$ ($\pm 0.1\,\text{m}$).
 2. **0.5 m separation:** Box $[0, 10]\,\text{m}$, Cylinder center $X = 11.0\,\text{m}$, $R = 0.5\,\text{m}$.  
-   Nearest surface = $11.0 - 0.5 = 10.5\,\text{m}$. Distance $= 10.5 - 10.0 = \mathbf{0.50\,\text{m}}$ ($\pm 0.1\,\text{m}$). Verdict: `TIGHT CLEARANCE`.
+   Nearest surface = $11.0 - 0.5 = 10.5\,\text{m}$. Distance $= 10.5 - 10.0 = \mathbf{0.50\,\text{m}}$ ($\pm 0.1\,\text{m}$).
 3. **0.0 m (Touching):** Box $[0, 10]\,\text{m}$, Cylinder center $X = 10.5\,\text{m}$, $R = 0.5\,\text{m}$.  
    Nearest surface $= 10.0\,\text{m}$. Distance $= \mathbf{0.00\,\text{m}}$, `isTouching = true`, `isCollision = false`.
 4. **Overlap (Collision):** Box $[0, 10]\,\text{m}$, Cylinder center $X = 10.0\,\text{m}$, $R = 0.5\,\text{m}$.  
    Cylinder penetrates $0.5\,\text{m}$ into the box volume. Distance $= 0.00\,\text{m}$, `isCollision = true`.
+
+5. **Boom fully inside the building:** Cylinder $R = 0.5\,\text{m}$ at $(5, 5)$ lies wholly within Box $[0, 10]\,\text{m}$.
+   Distance $= 0$, shared volume $= \pi \cdot 0.5^2 \cdot 15 = 11.78\,\text{m}^3$, so `isCollision = true`.
+6. **Overlap test unavailable (fail safe):** if `booleanCommon` throws, a zero distance is reported as
+   `isCollision = true`, never as `isTouching`.
 
 ---
 

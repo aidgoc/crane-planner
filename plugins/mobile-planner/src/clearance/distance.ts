@@ -47,18 +47,26 @@ export interface ClearanceResult {
 export const MM_PER_M = 1000;
 
 /**
+ * Intersection volumes below this (mm³) count as surface contact, not penetration.
+ * 1 mm³ is a numerical-noise floor, not a safety margin.
+ */
+const MIN_OVERLAP_MM3 = 1.0;
+
+/**
  * Computes the minimum 3D clearance distance between two shapes using
  * OpenCASCADE's BRepExtrema through the Chili3D IShape API.
  *
  * @param shapeA - First shape (e.g. Building solid)
  * @param shapeB - Second shape (e.g. Crane Boom cylinder)
- * @param factory - Optional IShapeFactory used to disambiguate boundary-touching vs volume penetration
+ * @param factory - IShapeFactory used to tell boundary-touching from volume penetration. Required:
+ *   a minimum distance of 0 means "touching OR overlapping", and without the boolean test an overlap
+ *   would be reported as merely touching.
  * @returns ClearanceResult containing distance in metres and collision flags
  */
 export function computeClearanceDistance(
     shapeA: IShape,
     shapeB: IShape,
-    factory?: IShapeFactory,
+    factory: IShapeFactory,
 ): ClearanceResult {
     const distMm = shapeA.extremaDistance(shapeB);
 
@@ -79,33 +87,23 @@ export function computeClearanceDistance(
     }
 
     // distMm <= Precision.Distance: The shapes either touch at the boundary or overlap.
-    // If a shape factory is available, evaluate booleanCommon to test for penetrating volume.
-    if (factory) {
-        try {
-            const commonResult = factory.booleanCommon([shapeA], [shapeB]);
-            if (commonResult.isOk && !commonResult.value.isNull()) {
-                const volMm3 = commonResult.value.volume();
-                // If the intersection has a positive 3D volume, they penetrate (Collision)
-                if (volMm3 > 1.0) {
-                    return {
-                        distanceM: 0,
-                        distanceMm: 0,
-                        isCollision: true,
-                        isTouching: false,
-                    };
-                }
-            }
-        } catch {
-            // If booleanCommon fails, fall back to collision flag for 0-distance
-        }
+    // Evaluate booleanCommon to test for penetrating volume. Fail safe: if the boolean cannot give an
+    // answer, report a collision, never "touching" (a planning aid must not under-report a clash).
+    let penetrates: boolean;
+    try {
+        const commonResult = factory.booleanCommon([shapeA], [shapeB]);
+        penetrates =
+            !commonResult.isOk ||
+            (!commonResult.value.isNull() && commonResult.value.volume() > MIN_OVERLAP_MM3);
+    } catch {
+        penetrates = true;
     }
 
-    // Boundary contact without volume penetration
     return {
         distanceM: 0,
         distanceMm: 0,
-        isCollision: false,
-        isTouching: true,
+        isCollision: penetrates,
+        isTouching: !penetrates,
     };
 }
 

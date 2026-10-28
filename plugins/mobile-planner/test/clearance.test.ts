@@ -7,6 +7,7 @@
 // Owner: Abhishek
 // ============================================================================
 
+import type { IShapeFactory } from "@chili3d/core";
 import { ShapeFactory } from "@chili3d/wasm";
 import {
     computeClearanceDistance,
@@ -132,6 +133,50 @@ describe("Task M5: 3D Boom Clearance Distance Dry Run", () => {
         const result = computeClearanceDistance(building, boom, factory);
 
         expect(result.distanceM).toBeCloseTo(0.0, 2);
+        expect(result.isCollision).toBe(true);
+        expect(result.isTouching).toBe(false);
+    });
+
+    /**
+     * Case 5: Boom completely INSIDE the building (no surface gap at all)
+     *
+     * Hand-worked calculation:
+     * - Building Box: X, Y in [0, 10] m, Z in [0, 20] m.
+     * - Boom Cylinder: radius = 0.5 m at (X = 5.0, Y = 5.0), length = 15 m, so it spans
+     *   X, Y in [4.5, 5.5] m and Z in [0, 15] m: entirely within the box.
+     * - Minimum distance = 0 and the shared volume is the whole cylinder:
+     *   V = pi * 0.5^2 * 15 = 11.78 m3 > 0, so this must be a collision, not "touching".
+     */
+    test("Case 5: boom fully inside the building is a collision", () => {
+        const building = createBuildingBox(factory, { x: 0, y: 0, z: 0 }, { dx: 10, dy: 10, dz: 20 });
+        const boom = createBoomCylinder(factory, { x: 5.0, y: 5.0, z: 0 }, 0.5, 15);
+
+        const result = computeClearanceDistance(building, boom, factory);
+
+        expect(result.distanceM).toBeCloseTo(0.0, 2);
+        expect(result.isCollision).toBe(true);
+        expect(result.isTouching).toBe(false);
+    });
+
+    /**
+     * Case 6: Fail safe when the boolean test cannot answer
+     *
+     * Hand-worked reasoning:
+     * - Geometry is Case 3 (distance 0 = touching OR overlapping, the boolean decides which).
+     * - If the boolean throws, we do not know it is only touching. A planning aid must not
+     *   under-report a clash, so the result must be a collision, never "touching".
+     */
+    test("Case 6: reports a collision (not touching) when the overlap test fails", () => {
+        const building = createBuildingBox(factory, { x: 0, y: 0, z: 0 }, { dx: 10, dy: 10, dz: 20 });
+        const boom = createBoomCylinder(factory, { x: 10.5, y: 5.0, z: 0 }, 0.5, 15);
+        const failing = {
+            booleanCommon: () => {
+                throw new Error("boolean failed");
+            },
+        } as unknown as IShapeFactory;
+
+        const result = computeClearanceDistance(building, boom, failing);
+
         expect(result.isCollision).toBe(true);
         expect(result.isTouching).toBe(false);
     });
