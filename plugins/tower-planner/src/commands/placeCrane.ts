@@ -1,11 +1,20 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { command, type I18nKeys, type IApplication, type ICommand, PubSub } from "@chili3d/core";
+import {
+    type CommandKeys,
+    command,
+    type I18nKeys,
+    type IApplication,
+    type ICommand,
+    PubSub,
+} from "@chili3d/core";
 import { TowerCranePlacementPanel } from "../ui/placementPanel";
 
+let activePanel: TowerCranePlacementPanel | undefined;
+
 @command({
-    key: "towerplanner.place" as any,
+    key: "towerplanner.place" as CommandKeys,
     icon: "icon-cog",
     helpText: "towerplanner.place.help" as I18nKeys,
 })
@@ -17,6 +26,12 @@ export class PlaceTowerCraneCommand implements ICommand {
             return;
         }
 
-        new TowerCranePlacementPanel(view).show();
+        activePanel?.dispose();
+        const panel = new TowerCranePlacementPanel(view);
+        activePanel = panel;
+        panel.onDispose(() => {
+            if (activePanel === panel) activePanel = undefined;
+        });
+        panel.show();
     }
 }

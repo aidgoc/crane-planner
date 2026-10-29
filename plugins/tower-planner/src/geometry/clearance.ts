@@ -1,4 +1,4 @@
-﻿// Part of the Chili3d Project, under the AGPL-3.0 License.
+// Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
 /**
@@ -143,12 +143,24 @@ export function checkLineClearance(
 
 /**
  * Circle/swing envelope oversail depth against a polygon.
- * Definition (for tower crane jib swing circle): oversail depth = max(0, swingRadius - distanceFromCenterToPolygon)
- * when the circle intersects/touches the polygon in the sense that it extends beyond the closest boundary
- * toward the polygon. If the polygon is the forbidden obstacle and the center is outside, oversail occurs
- * if swingRadius > distance(center, polygon). The depth of penetration into the obstacle is swingRadius - distance(center, polygon)
- * (measured along the line connecting center to the closest point on the polygon).
- * Returns { intersects, distanceToPolygon, oversailDepth, ok } where ok means no oversail (oversailDepth <= eps).
+ * Oversail depth is the greatest distance the swing circle reaches past the nearest polygon boundary
+ * into the obstacle, measured along the line from that boundary through the centre.
+ *
+ * - Centre outside: the circle reaches the obstacle only when swingRadius >= distanceToPolygon; the
+ *   depth inside the obstacle is swingRadius - distanceToPolygon. The sample-site school case -
+ *   mast (30,40), radius 40 m, distance 38 m - therefore oversails by 2 m.
+ * - Centre inside or on the polygon: the mast already lies in the obstacle, so the farthest point
+ *   of the circle from the nearest boundary is distanceToPolygon + swingRadius. On the boundary
+ *   this reduces to swingRadius. intersects is always true and ok is false, even when the whole
+ *   circle lies inside the polygon.
+ *
+ * The depth is measured from the nearest boundary and is not clipped by the opposite side of the
+ * polygon; it answers how far the circle reaches past that boundary.
+ *
+ * `intersects` includes boundary touching. `ok` is true only for a center outside the polygon with
+ * oversailDepth <= eps; a center inside or on the polygon is never ok, even with a zero swing radius.
+ *
+ * Returns { intersects, distanceToPolygon, oversailDepth, ok }.
  */
 export function checkCirclePolygonOversail(
     center: Point2D,
@@ -158,17 +170,116 @@ export function checkCirclePolygonOversail(
 ): { intersects: boolean; distanceToPolygon: number; oversailDepth: number; ok: boolean } {
     const distanceToPolygon = pointToPolygonDistance(center, polygon);
     const insideOrOn = pointInPolygon(center, polygon, eps);
+
     if (insideOrOn) {
-        // If center is inside/on forbidden area, this is a severe violation; oversail depth is treated as >= radius conceptually
-        // but per backlog examples center is outside mast position - still compute
-        const oversailDepth = swingRadius; // conservative
-        return { intersects: true, distanceToPolygon: 0, oversailDepth, ok: false };
+        const oversailDepth = distanceToPolygon + swingRadius;
+        return { intersects: true, distanceToPolygon, oversailDepth, ok: false };
     }
+
+    const oversailDepth = Math.max(0, swingRadius - distanceToPolygon);
     if (swingRadius >= distanceToPolygon - eps) {
-        const oversailDepth = Math.max(0, swingRadius - distanceToPolygon);
         return { intersects: true, distanceToPolygon, oversailDepth, ok: oversailDepth <= eps };
     }
     return { intersects: false, distanceToPolygon, oversailDepth: 0, ok: true };
+}
+
+/**
+ * Result of an annulus-versus-polygon intersection test.
+ *
+ * The annulus is the closed radial band `innerRadius <= |p - center| <= outerRadius`
+ * (metres). The polygon is a closed ring: the edge from the last vertex back to the
+ * first is included. Both shapes are treated as closed, so touching a boundary counts.
+ *
+ * `intersects` is true when any of the following hold:
+ * - `vertexInBand`: a polygon vertex lies in the band;
+ * - `edgeInBand`: an edge crosses or touches the band, even if both endpoints are
+ *   outside it;
+ * - `polygonEnclosesBand`: the polygon surrounds the whole band, so its area covers
+ *   part of it.
+ *
+ * A polygon wholly inside the inner hole, or wholly outside the outer radius, does
+ * not intersect. `polygonEnclosesBand` is only evaluated when the first two tests
+ * fail; when true, the band lies entirely inside the polygon.
+ */
+export type AnnulusPolygonIntersection = {
+    intersects: boolean;
+    vertexInBand: boolean;
+    edgeInBand: boolean;
+    polygonEnclosesBand: boolean;
+};
+
+/**
+ * Test whether a closed annulus (radial band) intersects a simple closed polygon.
+ *
+ * Units are metres. Radii must be finite with `0 <= innerRadius <= outerRadius`;
+ * an inner radius of zero gives a solid disk. `eps` is the tolerance used when
+ * comparing radial distances so that boundary contact counts as intersection.
+ *
+ * The edge test uses the fact that the distance from the centre along an edge is
+ * continuous, so the edge's radial range is `[minDistance, maxDistance]`; the
+ * maximum occurs at an endpoint. This catches edges that cross the band while both
+ * endpoints lie in the hole or outside the outer radius.
+ */
+export function checkAnnulusPolygonIntersection(
+    center: Point2D,
+    innerRadius: number,
+    outerRadius: number,
+    polygon: Polygon2D,
+    eps = 1e-9,
+): AnnulusPolygonIntersection {
+    if (
+        !Number.isFinite(innerRadius) ||
+        !Number.isFinite(outerRadius) ||
+        innerRadius < 0 ||
+        outerRadius < innerRadius
+    ) {
+        throw new RangeError("Annulus radii must satisfy 0 <= innerRadius <= outerRadius (metres).");
+    }
+
+    const noIntersection: AnnulusPolygonIntersection = {
+        intersects: false,
+        vertexInBand: false,
+        edgeInBand: false,
+        polygonEnclosesBand: false,
+    };
+    if (!polygon || polygon.length === 0) return noIntersection;
+
+    const lower = innerRadius - eps;
+    const upper = outerRadius + eps;
+    const radiusOf = (p: Point2D) => Math.hypot(p.x - center.x, p.y - center.y);
+
+    let vertexInBand = false;
+    for (const point of polygon) {
+        const radius = radiusOf(point);
+        if (radius >= lower && radius <= upper) vertexInBand = true;
+    }
+
+    let edgeInBand = false;
+    const n = polygon.length;
+    for (let i = 0; i < n; i++) {
+        const a = polygon[i];
+        const b = polygon[(i + 1) % n];
+        const minRadius = pointToSegmentDistance(center, a, b);
+        const maxRadius = Math.max(radiusOf(a), radiusOf(b));
+        if (minRadius <= upper && maxRadius >= lower) edgeInBand = true;
+    }
+
+    let polygonEnclosesBand = false;
+    if (!vertexInBand && !edgeInBand) {
+        // The band is connected, so if no vertex or edge touches it the band is
+        // either entirely inside the polygon or entirely outside it. A point in
+        // the middle of the band therefore decides the containment case.
+        const midRadius = (innerRadius + outerRadius) / 2;
+        const sample = { x: center.x + midRadius, y: center.y };
+        polygonEnclosesBand = pointInPolygon(sample, polygon, eps);
+    }
+
+    return {
+        intersects: vertexInBand || edgeInBand || polygonEnclosesBand,
+        vertexInBand,
+        edgeInBand,
+        polygonEnclosesBand,
+    };
 }
 
 export const clearanceKernel = {
@@ -180,4 +291,5 @@ export const clearanceKernel = {
     distanceToHorizontalLine,
     checkLineClearance,
     checkCirclePolygonOversail,
+    checkAnnulusPolygonIntersection,
 };

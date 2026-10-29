@@ -1,7 +1,8 @@
-﻿{
+{
     "name": "Tower Planner",
     "version": "0.1.0",
     "description": "Tower crane placement, plan rings and clearance checks",
+    "icon": "icons/tower-crane.svg",
     "main": "dist/main.js",
     "css": "dist/main.css",
     "author": {

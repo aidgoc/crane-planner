@@ -25,6 +25,17 @@ type ResultRow = {
     readonly value: HTMLElement;
 };
 
+type ResultRows = {
+    readonly mast: ResultRow;
+    readonly slew: ResultRow;
+    readonly minRing: ResultRow;
+    readonly maxRing: ResultRow;
+    readonly counterRing: ResultRow;
+    readonly jibTip: ResultRow;
+    readonly counterTip: ResultRow;
+    readonly baseRing: ResultRow;
+};
+
 function formatNumber(value: number, digits = 3): string {
     const normalized = Math.abs(value) < 10 ** -digits / 2 ? 0 : value;
     return normalized.toFixed(digits).replace(/\.?0+$/, "") || "0";
@@ -45,7 +56,7 @@ export class TowerCranePlacementPanel {
     private readonly maxHookRadius: HTMLInputElement;
     private readonly counterJibRadius: HTMLInputElement;
     private readonly errors: HTMLElement;
-    private readonly results: Record<string, ResultRow>;
+    private readonly results: ResultRows;
 
     private catalogue = createDefaultCraneCatalogue();
     private placement: CranePlacement = { ...DEFAULT_TOWER_CRANE_PLACEMENT };
@@ -53,6 +64,8 @@ export class TowerCranePlacementPanel {
     private dom: HTMLElement | undefined;
     private dragPointerId: number | undefined;
     private disposed = false;
+    private shown = false;
+    private onDisposeCallback: (() => void) | undefined;
 
     constructor(private readonly view: IView) {
         this.scene = new CraneScene(view);
@@ -81,8 +94,17 @@ export class TowerCranePlacementPanel {
         this.bindInputs();
     }
 
+    onDispose(callback: () => void) {
+        if (this.disposed) {
+            callback();
+            return;
+        }
+        this.onDisposeCallback = callback;
+    }
+
     show() {
-        if (this.disposed) return;
+        if (this.disposed || this.shown) return;
+        this.shown = true;
 
         this.scene.update(this.layout);
         this.renderResults(this.layout);
@@ -139,14 +161,14 @@ export class TowerCranePlacementPanel {
             ),
             this.createSection(
                 "Derived result",
-                this.results["mast"].element,
-                this.results["slew"].element,
-                this.results["minRing"].element,
-                this.results["maxRing"].element,
-                this.results["counterRing"].element,
-                this.results["jibTip"].element,
-                this.results["counterTip"].element,
-                this.results["baseRing"].element,
+                this.results.mast.element,
+                this.results.slew.element,
+                this.results.minRing.element,
+                this.results.maxRing.element,
+                this.results.counterRing.element,
+                this.results.jibTip.element,
+                this.results.counterTip.element,
+                this.results.baseRing.element,
             ),
             this.errors,
         );
@@ -275,14 +297,14 @@ export class TowerCranePlacementPanel {
     }
 
     private renderResults(layout: CraneLayout) {
-        this.results["mast"].value.textContent = formatPoint(layout.mast);
-        this.results["slew"].value.textContent = `${layout.slewAngleDeg.toFixed(1)}°`;
-        this.results["minRing"].value.textContent = `${layout.rings.minHookRadius.radius.toFixed(2)} m`;
-        this.results["maxRing"].value.textContent = `${layout.rings.maxHookRadius.radius.toFixed(2)} m`;
-        this.results["counterRing"].value.textContent = `${layout.rings.counterJibSweep.radius.toFixed(2)} m`;
-        this.results["jibTip"].value.textContent = formatPoint(layout.jibTip);
-        this.results["counterTip"].value.textContent = formatPoint(layout.counterJibTip);
-        this.results["baseRing"].value.textContent = `${layout.rings.baseExclusion.radius.toFixed(2)} m`;
+        this.results.mast.value.textContent = formatPoint(layout.mast);
+        this.results.slew.value.textContent = `${layout.slewAngleDeg.toFixed(1)}°`;
+        this.results.minRing.value.textContent = `${layout.rings.minHookRadius.radius.toFixed(2)} m`;
+        this.results.maxRing.value.textContent = `${layout.rings.maxHookRadius.radius.toFixed(2)} m`;
+        this.results.counterRing.value.textContent = `${layout.rings.counterJibSweep.radius.toFixed(2)} m`;
+        this.results.jibTip.value.textContent = formatPoint(layout.jibTip);
+        this.results.counterTip.value.textContent = formatPoint(layout.counterJibTip);
+        this.results.baseRing.value.textContent = `${layout.rings.baseExclusion.radius.toFixed(2)} m`;
     }
 
     private syncMastInputs() {
@@ -291,6 +313,8 @@ export class TowerCranePlacementPanel {
     }
 
     private attachViewEvents() {
+        this.detachViewEvents();
+
         const dom = this.view.dom;
         if (!dom) return;
 
@@ -300,6 +324,23 @@ export class TowerCranePlacementPanel {
         dom.addEventListener("pointerup", this.handlePointerUp, true);
         dom.addEventListener("pointercancel", this.handlePointerUp, true);
         dom.addEventListener("lostpointercapture", this.handleLostPointerCapture, true);
+    }
+
+    private detachViewEvents() {
+        if (this.dragPointerId !== undefined) {
+            this.endDrag(this.dragPointerId);
+        }
+
+        const dom = this.dom;
+        if (!dom) return;
+
+        dom.removeEventListener("pointerdown", this.handlePointerDown, true);
+        dom.removeEventListener("pointermove", this.handlePointerMove, true);
+        dom.removeEventListener("pointerup", this.handlePointerUp, true);
+        dom.removeEventListener("pointercancel", this.handlePointerUp, true);
+        dom.removeEventListener("lostpointercapture", this.handleLostPointerCapture, true);
+        dom.style.cursor = "";
+        this.dom = undefined;
     }
 
     private handlePointerDown = (event: PointerEvent) => {
@@ -395,20 +436,11 @@ export class TowerCranePlacementPanel {
         this.slewNumber.removeEventListener("input", this.handleFieldInput);
         this.slewSlider.removeEventListener("input", this.handleSliderInput);
 
-        if (this.dom) {
-            this.dom.removeEventListener("pointerdown", this.handlePointerDown, true);
-            this.dom.removeEventListener("pointermove", this.handlePointerMove, true);
-            this.dom.removeEventListener("pointerup", this.handlePointerUp, true);
-            this.dom.removeEventListener("pointercancel", this.handlePointerUp, true);
-            this.dom.removeEventListener("lostpointercapture", this.handleLostPointerCapture, true);
-            this.dom.style.cursor = "";
-        }
-        if (this.dragPointerId !== undefined) {
-            this.endDrag(this.dragPointerId);
-        }
-
+        this.detachViewEvents();
         this.scene.dispose(updateScene);
         this.root.remove();
+        this.onDisposeCallback?.();
+        this.onDisposeCallback = undefined;
     }
 }
 

@@ -1,10 +1,10 @@
-﻿# Tower Planner Plugin
+# Tower Planner Plugin
 
 Tower crane planning aid for Cycle 4.
 
 ## T6 clearance kernel
 
-Pure TypeScript helpers in `src/geometry/clearance.ts` for sample-site clearance checks. See `test/clearance.test.ts` for worked examples.
+Pure TypeScript helpers in `src/geometry/clearance.ts` for sample-site clearance checks. The kernel covers point-in-polygon, distances, a swing circle versus polygon, and `checkAnnulusPolygonIntersection` for a radial band (inner/outer radius) versus polygon, including edges that cross the band and polygons that enclose it. See `test/clearance.test.ts` for worked examples.
 
 ## T7 placement and rings
 
