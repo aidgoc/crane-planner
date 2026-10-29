@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { I18n, type I18nKeys, type IApplication, PubSub } from "@chili3d/core";
 import { getCraneById, MCT85F5, MCT88, TOWER_CRANES } from "../src/catalogue";
 import { craneDialogNotes, TowerPickCheckCommand } from "../src/command";
+import { PlaceTowerCraneCommand } from "../src/commands/placeCrane";
 import { PLANNING_DISCLAIMER } from "../src/disclaimer";
 import { en } from "../src/i18n/en";
 import TowerPlannerPlugin from "../src/index";
@@ -27,16 +28,25 @@ function installEnglishLocale(): () => void {
 }
 
 describe("tower-planner plugin wiring", () => {
-    test("registers the command, ribbon item and English resources", () => {
-        expect(TowerPlannerPlugin.commands).toEqual([TowerPickCheckCommand]);
+    test("registers both commands, both ribbon items and English resources", () => {
+        expect(TowerPlannerPlugin.commands).toEqual([TowerPickCheckCommand, PlaceTowerCraneCommand]);
 
-        const ribbon = TowerPlannerPlugin.ribbons?.[0];
-        expect(ribbon?.tabName).toBe("ribbon.tab.plugin");
-        expect(ribbon?.groups[0].items).toContain("tower.pick");
+        const pickRibbon = TowerPlannerPlugin.ribbons?.find(
+            (ribbon) => ribbon.tabName === "ribbon.tab.plugin",
+        );
+        expect(pickRibbon).toBeDefined();
+        expect(pickRibbon?.groups[0].items).toContain("tower.pick");
+
+        const placementRibbon = TowerPlannerPlugin.ribbons?.find(
+            (ribbon) => ribbon.tabName === "ribbon.tab.manager",
+        );
+        expect(placementRibbon).toBeDefined();
+        expect(placementRibbon?.groups[0].items).toContain("towerplanner.place");
 
         const locale = TowerPlannerPlugin.i18nResources?.[0];
         expect(locale?.language).toBe("en");
         expect(locale?.translation["command.tower.pick"]).toBe("Tower Pick Check");
+        expect(locale?.translation["towerplanner.place"]).toBe("Place Tower Crane");
     });
 
     test("ships the exact required disclaimer in the plugin guide", () => {

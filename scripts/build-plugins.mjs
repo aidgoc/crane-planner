@@ -2,6 +2,7 @@
 // See LICENSE file in the project root for full license information.
 
 import { execSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { cp, mkdir, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -101,12 +102,16 @@ async function main() {
         const pluginDist = path.join(plugin.dir, "dist");
         const manifest = path.join(plugin.dir, "manifest.json");
         const icons = path.join(plugin.dir, "icons");
+        const importmap = path.join(plugin.dir, "importmap.json");
         const targetDir = path.join(targetBase, plugin.name);
         console.log(`[build-plugins] Copying ${plugin.dir} → ${targetDir}`);
         try {
             await copyDir(pluginDist, path.join(targetDir, "dist"));
             await copyDir(icons, path.join(targetDir, "icons"));
             await cp(manifest, path.join(targetDir, "manifest.json"));
+            if (existsSync(importmap)) {
+                await cp(importmap, path.join(targetDir, "importmap.json"));
+            }
 
             // The copy list above deliberately excludes docs/. Fail loudly if a
             // PDF ever appears in the distributable through a future change.
