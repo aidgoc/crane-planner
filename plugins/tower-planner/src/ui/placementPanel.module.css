@@ -1,0 +1,133 @@
+.root {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 10px;
+    color: var(--foreground-color);
+    font-size: 12px;
+}
+
+.disclaimer {
+    padding: 8px 10px;
+    border: 1px solid var(--border-color);
+    border-left: 4px solid #e8590c;
+    border-radius: 8px;
+    background-color: color-mix(in srgb, #e8590c 10%, transparent);
+    font-weight: 700;
+}
+
+.note {
+    color: var(--foreground-muted-color);
+    line-height: 1.4;
+}
+
+.section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+}
+
+.sectionTitle {
+    font-size: 0.92em;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.fieldHead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.fieldLabel {
+    color: var(--foreground-color);
+}
+
+.badge {
+    flex-shrink: 0;
+    padding: 1px 6px;
+    border: 1px solid #e8590c;
+    border-radius: 999px;
+    color: #e8590c;
+    font-size: 0.78em;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.inputRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.number {
+    width: 100%;
+    min-width: 0;
+    padding: 5px 7px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: var(--control-background-color);
+    color: var(--foreground-color);
+}
+
+.number:focus {
+    border-color: var(--primary-color);
+    outline: none;
+}
+
+.unit {
+    flex-shrink: 0;
+    color: var(--foreground-muted-color);
+}
+
+.slider {
+    width: 100%;
+    accent-color: var(--primary-color);
+}
+
+.resultRow {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.resultRow:last-child {
+    padding-bottom: 0;
+    border-bottom: none;
+}
+
+.resultLabel {
+    color: var(--foreground-muted-color);
+}
+
+.resultValue {
+    font-family: monospace;
+    font-weight: 600;
+    text-align: right;
+}
+
+.errors {
+    padding: 8px 10px;
+    border: 1px solid #e03131;
+    border-radius: 8px;
+    color: #e03131;
+    line-height: 1.4;
+}
+
+.errors[hidden] {
+    display: none;
+}
