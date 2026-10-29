@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="256" height="256" role="img" aria-labelledby="title">
+  <title id="title">Tower crane</title>
+  <g fill="none" stroke="#e8a33d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 57h24"/>
+    <path d="M32 57V13"/>
+    <path d="M26 57 32 13l6 44"/>
+    <path d="M18 19h38"/>
+    <path d="M32 13h26"/>
+    <path d="M32 19v-6"/>
+    <path d="M55 19v5"/>
+    <path d="M55 24v10"/>
+    <path d="M51 34h8"/>
+    <path d="M18 19l-7 5"/>
+    <rect x="8" y="24" width="8" height="6" rx="1"/>
+  </g>
+</svg>
