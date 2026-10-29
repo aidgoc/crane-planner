@@ -97,7 +97,7 @@ function chainBoundary(
     arc: ArcSegment2D | undefined,
 ): { polygon: Point2D[]; neRadius: number; elements: BoundaryElement[] } {
     if (lines.length === 0) {
-        return { polygon: [], neRadius: 0, elements: [] };
+        throw new Error("Boundary loop does not close: no boundary lines found.");
     }
 
     const elements: BoundaryElement[] = [];
@@ -108,22 +108,38 @@ function chainBoundary(
     const polygon: Point2D[] = [{ ...remaining[0].seg.start }, { ...remaining[0].seg.end }];
     let tail = polygon[polygon.length - 1];
 
-    // Compute arc start point (if arc exists)
+    // Compute arc endpoints (if arc exists)
     const arcStartPt: Point2D | undefined = arc
         ? {
               x: arc.center.x + arc.radius * Math.cos(arc.startAngleRad),
               y: arc.center.y + arc.radius * Math.sin(arc.startAngleRad),
           }
         : undefined;
+    const arcEndPt: Point2D | undefined = arc
+        ? {
+              x: arc.center.x + arc.radius * Math.cos(arc.endAngleRad),
+              y: arc.center.y + arc.radius * Math.sin(arc.endAngleRad),
+          }
+        : undefined;
     let arcInserted = false;
 
     function tryInsertArc(): void {
-        if (!arc || !arcStartPt || arcInserted) return;
+        if (!arc || !arcStartPt || !arcEndPt || arcInserted) return;
         if (ptEq(tail, arcStartPt)) {
+            // Forward (CCW) traversal
             arcInserted = true;
             elements.push({ type: "arc", arc });
             const samples = sampleArc(arc, 32);
             // samples[0] ≈ tail; skip it
+            for (let i = 1; i < samples.length; i++) {
+                polygon.push({ ...samples[i] });
+            }
+            tail = polygon[polygon.length - 1];
+        } else if (ptEq(tail, arcEndPt)) {
+            // Reverse (CW) traversal
+            arcInserted = true;
+            elements.push({ type: "arc", arc });
+            const samples = sampleArc(arc, 32).reverse();
             for (let i = 1; i < samples.length; i++) {
                 polygon.push({ ...samples[i] });
             }
@@ -158,6 +174,15 @@ function chainBoundary(
         if (!found) break;
         tryInsertArc();
         if (ptEq(tail, polygon[0])) break;
+    }
+
+    // Verify closure: endpoints must meet and all segments must be consumed
+    const isClosed = ptEq(tail, polygon[0]);
+    const allUsed = remaining.every((r) => r.used);
+    const arcChecked = arc ? arcInserted : true;
+
+    if (!isClosed || !allUsed || !arcChecked || polygon.length < 4) {
+        throw new Error("Boundary loop does not close: endpoints do not meet.");
     }
 
     return { polygon, neRadius: arc?.radius ?? 0, elements };

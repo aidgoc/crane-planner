@@ -91,45 +91,79 @@ describe("DGOC Site Model Plugin (Ajit Lead)", () => {
         });
 
         /*
-         * SHIFT TEST — sir's requirement (Wed 28 Oct review):
-         * "A good test: shift every coordinate in the DXF by +100 m.
-         *  The area must stay the same and the boundary must move."
-         *
-         * We simulate this by applying a +100 offset to every polygon point
-         * returned by the parser and then recomputing the area with the shoelace
-         * function — area must be unchanged.  We also verify that the boundary
-         * bounding-box min moves by exactly +100 m, proving the parser actually
-         * used the DXF coordinates and did not hard-code them.
+         * REAL DXF SHIFT TEST — Sir's review requirement (PR #4):
+         * "Your shift test moves the output polygon in JavaScript, so a hard-coded
+         *  parser would pass it too. Shift the DXF text itself (every group 10/20/11/21
+         *  value +100), parse that, and check the area and the minimum x/y."
          *
          * HAND CHECK:
-         * Shoelace area is translation-invariant: shifting (x,y) → (x+d, y+d)
-         * adds d * Σ(yⱼ - yᵢ) = 0 (the signed-area cross terms cancel on a
-         * closed loop).  So area_shifted must equal area_original exactly.
+         * Original DXF plot boundary: X in [0, 90], Y in [0, 72].
+         * When every DXF coordinate (groups 10, 20, 11, 21) is shifted by +100.0 m in the text:
+         *   - Bounding box min X shifts from 0.0 m to 100.0 m.
+         *   - Bounding box min Y shifts from 0.0 m to 100.0 m.
+         *   - Chained boundary width (90.0 m) and depth (72.0 m) remain unchanged.
+         *   - Shoelace area remains exactly 6458.54 m² (translation-invariant).
+         *   - Tower A footprint shifts from [25, 20] to [125, 120].
+         *
+         * This proves the parser is truly reading coordinates from the DXF text,
+         * not returning any cached or hardcoded numbers.
          */
-        test("shift all DXF coordinates by +100 m: area unchanged, boundary moves by 100 m", () => {
-            const OFFSET = 100;
+        test("shift DXF text coordinates by +100 m: area unchanged at 6458.5 m², min x/y move to 100 m", () => {
+            const OFFSET = 100.0;
 
-            // Parse original
-            const original = parseDxfToSite(sampleDxfContent);
-            const originalMinX = Math.min(...original.boundary.polygon.map((p) => p.x));
-            const originalMinY = Math.min(...original.boundary.polygon.map((p) => p.y));
-            const originalArea = original.boundary.area_m2;
+            // Helper: shift all DXF coordinate pairs (groups 10, 20, 11, 21) in the text itself
+            function shiftDxfText(dxfText: string, offset: number): string {
+                const lines = dxfText.split(/\r?\n/);
+                const coordCodes = new Set(["10", "20", "11", "21"]);
+                for (let i = 0; i < lines.length - 1; i++) {
+                    if (coordCodes.has(lines[i].trim())) {
+                        const val = parseFloat(lines[i + 1].trim());
+                        if (!Number.isNaN(val)) {
+                            lines[i + 1] = (val + offset).toFixed(4);
+                        }
+                    }
+                }
+                return lines.join("\n");
+            }
 
-            // Shift every polygon vertex of the boundary
-            const shiftedPolygon = original.boundary.polygon.map((p) => ({
-                x: p.x + OFFSET,
-                y: p.y + OFFSET,
-            }));
+            const shiftedDxfContent = shiftDxfText(sampleDxfContent, OFFSET);
 
-            // Area must be translation-invariant
-            const shiftedArea = calculatePolygonArea(shiftedPolygon);
-            expect(shiftedArea).toBeCloseTo(originalArea, 1);
+            // Parse the shifted DXF file directly through dxf-parser
+            const shiftedSite = parseDxfToSite(shiftedDxfContent);
 
-            // Bounding-box minimums must shift by exactly OFFSET
-            const shiftedMinX = Math.min(...shiftedPolygon.map((p) => p.x));
-            const shiftedMinY = Math.min(...shiftedPolygon.map((p) => p.y));
-            expect(shiftedMinX).toBeCloseTo(originalMinX + OFFSET, 4);
-            expect(shiftedMinY).toBeCloseTo(originalMinY + OFFSET, 4);
+            // 1. Area must remain unchanged (translation-invariant)
+            expect(shiftedSite.boundary.area_m2).toBeCloseTo(6458.54, 1);
+
+            // 2. Plot dimensions remain 90 x 72 m
+            expect(shiftedSite.boundary.width_m).toBeCloseTo(90.0, 4);
+            expect(shiftedSite.boundary.depth_m).toBeCloseTo(72.0, 4);
+
+            // 3. Bounding box minimums must be exactly (100, 100)
+            const minX = Math.min(...shiftedSite.boundary.polygon.map((p) => p.x));
+            const minY = Math.min(...shiftedSite.boundary.polygon.map((p) => p.y));
+            expect(minX).toBeCloseTo(100.0, 3);
+            expect(minY).toBeCloseTo(100.0, 3);
+
+            // 4. Tower A must be detected with shifted coordinates (X: 125..165, Y: 120..142)
+            expect(shiftedSite.buildings.tower_a).toBeDefined();
+            const towerAXs = shiftedSite.buildings.tower_a.polygon.map((p) => p.x);
+            const towerAYs = shiftedSite.buildings.tower_a.polygon.map((p) => p.y);
+            expect(Math.min(...towerAXs)).toBeCloseTo(125.0, 3);
+            expect(Math.min(...towerAYs)).toBeCloseTo(120.0, 3);
+        });
+
+        /*
+         * BOUNDARY LOOP CLOSURE TEST — Sir's review requirement (PR #4):
+         * "Throw an error if the boundary loop doesn't close, and add a test for it."
+         */
+        test("throws an error if the boundary loop does not close", () => {
+            // Remove one boundary LINE from SITE_BOUNDARY so the loop is open
+            const brokenDxf = sampleDxfContent.replace(
+                /8\r?\nSITE_BOUNDARY\r?\n100\r?\nAcDbLine/,
+                "8\r\nOPEN_BOUNDARY\r\n100\r\nAcDbLine",
+            );
+            expect(brokenDxf).not.toBe(sampleDxfContent);
+            expect(() => parseDxfToSite(brokenDxf)).toThrow(/Boundary loop does not close/i);
         });
 
         /*

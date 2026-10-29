@@ -22,7 +22,7 @@ export function validateSiteProject(data: unknown): Result<SiteProject, string> 
         return Result.err("Invalid units: expected 'm'");
     }
 
-    if (!proj.boundary || !proj.boundary.polygon || proj.boundary.polygon.length < 3) {
+    if (!proj.boundary?.polygon || proj.boundary.polygon.length < 3) {
         return Result.err("Invalid boundary: must include closed polygon with at least 3 points");
     }
 
@@ -31,7 +31,7 @@ export function validateSiteProject(data: unknown): Result<SiteProject, string> 
     }
 
     // Verify mandatory disclaimer
-    if (!proj.disclaimer || !proj.disclaimer.includes("Planning aid, not a certified lift plan.")) {
+    if (!proj.disclaimer?.includes("Planning aid, not a certified lift plan.")) {
         return Result.err(`Missing mandatory disclaimer: '${REQUIRED_DISCLAIMER}' must be present.`);
     }
 

@@ -1,7 +1,7 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { type IEdge, type IShape, type ISolid, type IWire, Result, ShapeTypes, XYZ } from "@chili3d/core";
+import { type IEdge, type IShape, type ISolid, type IWire, Result, XYZ } from "@chili3d/core";
 import type { ShapeFactory } from "@chili3d/wasm";
 import { metresToMm, type Point2D } from "./types";
 
