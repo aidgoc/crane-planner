@@ -1,7 +1,7 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { capacityAt } from "./capacity";
+import { capacityAt, publishedMaxJibM } from "./capacity";
 import type { CapacityModel } from "./types";
 
 /**
@@ -93,9 +93,13 @@ function invalid(
 function publishedJibRange(model: CapacityModel): { min: number; max: number } | undefined {
     const rows = model.tipLoadByJib;
     if (rows.length === 0) return undefined;
+
+    const max = publishedMaxJibM(model);
+    if (max === undefined) return undefined;
+
     return {
         min: rows[0].jibM.value,
-        max: rows[rows.length - 1].jibM.value,
+        max,
     };
 }
 

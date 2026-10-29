@@ -11,7 +11,7 @@
                     "page": 1,
                     "section": "MCT 88 overview - maximum capacity and tip loads by jib length",
                     "url": "https://www.manitowoc.com/potain-ecatalog-en14439-c25d25.html",
-                    "note": "Page 1 of the 8-page local reference PDF (Potain-MCT-88_Reference.pdf, copyright 2026 Manitowoc). Shows 5 t maximum capacity, 53.1 m maximum jib, and the metric tip-load labels 20 m to 3.95 t through 53.1 m to 1.15 t."
+                    "note": "Page 1 of the 8-page reference PDF (Potain-MCT-88_Reference.pdf, copyright 2026 Manitowoc; held outside this repository). Shows 5 t maximum capacity, 52 m maximum working jib with a 1.15 t tip load, 53.1 m overall tip length, a 1.2 m x 1.2 m mast, and the metric tip-load labels 20 m to 3.95 t through 52 m to 1.15 t. The 53.1 m dimension is not a working jib configuration."
                 },
                 "datasheetLoadCharts": {
                     "document": "Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Code 09-003-.5M-0610)",
@@ -24,7 +24,7 @@
                     "document": "Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Code 09-003-.5M-0610)",
                     "page": 6,
                     "section": "Dimensions and weight",
-                    "note": "Page 6 of the 8-page local reference PDF. Counter-jib 4380 kg (variant A) / 4250 kg (variant B); cab 1100 kg; mast width 1.2 m; counter-jib length 11.9 m."
+                    "note": "Page 6 of the 8-page reference PDF (held outside this repository). Slewing crane part table: counter-jib L = 11.9 m for both variants A and B; mass 4380 kg (variant A) / 4250 kg (variant B); cab 1100 kg. The p. 1 drawing labels the counter-jib radius as 13.7 m (A) / 11.3 m (B), which is a different dimension; the catalogue uses the p. 6 structural length."
                 }
             },
             "maxCapacityT": {
@@ -35,7 +35,7 @@
                 }
             },
             "maxJibLengthM": {
-                "value": 53.1,
+                "value": 52,
                 "provenance": {
                     "kind": "source",
                     "sourceId": "datasheetOverview"
@@ -163,7 +163,7 @@
                 },
                 {
                     "jibM": {
-                        "value": 53.1,
+                        "value": 52,
                         "provenance": {
                             "kind": "source",
                             "sourceId": "datasheetOverview"
@@ -183,7 +183,7 @@
                     "value": 1.2,
                     "provenance": {
                         "kind": "source",
-                        "sourceId": "datasheetDimensions"
+                        "sourceId": "datasheetOverview"
                     }
                 },
                 "counterJibLengthM": {
@@ -203,7 +203,7 @@
                         "sourceId": "datasheetDimensions"
                     }
                 },
-                "note": "Heaviest single component listed in the p. 6 dimensions and weight table: 4380 kg for variant A; variant B is 4250 kg. The table is a component-weight table, not an erection-sequence plan. Confirm the actual heaviest lift against the erection manual before use."
+                "note": "Heaviest single component listed in the p. 6 dimensions and weight table: 4380 kg for variant A; variant B is 4250 kg. The counter-jib structural length is 11.9 m for both variants. The table is a component-weight table, not an erection-sequence plan. Confirm the actual heaviest lift against the erection manual before use."
             }
         },
         {

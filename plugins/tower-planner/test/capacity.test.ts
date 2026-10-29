@@ -31,6 +31,18 @@ const INVALID_MAX_MODEL: CapacityModel = {
     maxCapacityT: indicative(0),
 };
 
+/** Clearly synthetic: max 2 t, a 20 m maximum jib and 0.75 t at that tip. */
+const SYNTHETIC_MINI: CapacityModel = {
+    id: "synthetic-mini",
+    name: "Synthetic Mini (test only)",
+    maxCapacityT: indicative(2),
+    defaultJibM: indicative(20),
+    tipLoadByJib: [
+        { jibM: indicative(10), tipT: indicative(1.5) },
+        { jibM: indicative(20), tipT: indicative(0.75) },
+    ],
+};
+
 describe("tipLoadAt", () => {
     test("returns the published 30 m tip load", () => {
         expect(tipLoadAt(MCT88, 30)).toBeCloseTo(2.7, 10);
@@ -87,6 +99,32 @@ describe("capacityAt", () => {
         expect(capacityAt(MCT88, Number.NaN, 10)).toBeNull();
         expect(capacityAt(MCT88, 30, Number.NaN)).toBeNull();
         expect(capacityAt(MCT88, 30, Number.POSITIVE_INFINITY)).toBeNull();
+    });
+
+    test("returns null above each model's own published maximum jib", () => {
+        // MCT 88: 52 m working jib (53.1 m is the overall tip length). At the
+        // 52 m boundary: 1.15 t × 52 m = 59.8 t·m; 59.8 / 52 = 1.15 t.
+        expect(capacityAt(MCT88, 52, 52)).toBeCloseTo(1.15, 10);
+        expect(capacityAt(MCT88, 52, 52, 20)).toBeCloseTo(0.92, 10);
+        expect(capacityAt(MCT88, 52, 0)).toBeCloseTo(5, 10);
+        expect(capacityAt(MCT88, 52.000001, 30)).toBeNull();
+        expect(capacityAt(MCT88, 53.1, 30)).toBeNull();
+        expect(capacityAt(MCT88, 100, 30)).toBeNull();
+        expect(capacityAt(MCT88, 100, 30, 20)).toBeNull();
+
+        // MCT 85 F5: its own 52 m maximum working jib and printed 1.1 t chart
+        // endpoint. The 53.1 m overall tip length is not a configuration.
+        expect(capacityAt(MCT85F5, 52, 52)).toBeCloseTo(1.1, 10);
+        expect(capacityAt(MCT85F5, 52.000001, 30)).toBeNull();
+        expect(capacityAt(MCT85F5, 53.1, 30)).toBeNull();
+        expect(capacityAt(MCT85F5, 100, 30)).toBeNull();
+
+        // A synthetic model has its own 20 m maximum, so the guard is not
+        // hard-coded to either catalogue crane. M = 0.75 t × 20 m = 15 t·m;
+        // 15 / 10 m = 1.5 t.
+        expect(capacityAt(SYNTHETIC_MINI, 20, 10)).toBeCloseTo(1.5, 10);
+        expect(capacityAt(SYNTHETIC_MINI, 20.000001, 10)).toBeNull();
+        expect(capacityAt(SYNTHETIC_MINI, 100, 10)).toBeNull();
     });
 
     test("applies the SIMULATED wind derate only at or above 20 km/h", () => {

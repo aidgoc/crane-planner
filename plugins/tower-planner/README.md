@@ -60,10 +60,10 @@ and page before using the result.
 
 | Crane | Standard (as printed) | Max capacity | Max working jib | Minimum radius | Default jib | Capacity source |
 | --- | --- | --- | --- | --- | --- | --- |
-| Potain MCT 88 | EN 14439 C25 | 5 t | 53.1 m | n/a (idealised model) | 30 m (`INDICATIVE`) | Tip-load labels, datasheet p. 1 |
+| Potain MCT 88 | EN 14439 C25 | 5 t | 52 m | n/a (idealised model) | 30 m (`INDICATIVE`) | Tip-load labels, datasheet p. 1 |
 | Potain MCT 85 F5 | FEM 1.001-A3 | 5 t | 52 m | 2.7 m (printed) | 30 m (`INDICATIVE`) | Per-radius chart, datasheet p. 3 |
 
-For the MCT 85 F5, 53.1 m is the overall tip length, not a working jib configuration. The published
+For both cranes, 53.1 m is the overall tip length, not a working jib configuration. The published
 working configurations are 20, 25, 30, 35, 40, 45, 50 and 52 m.
 
 ## Capacity models
@@ -72,6 +72,8 @@ working configurations are 20, 25, 30, 35, 40, 45, 50 and 52 m.
 
 For an installed jib length `L` and hook radius `r`, with published tip load `T(L)`:
 
+- The installed jib must not exceed the published 52 m working maximum; 53.1 m is the overall tip
+  length, not a jib configuration. `capacityAt` returns `null` above 52 m.
 - Rated moment `M = T(L) × L`.
 - Corner radius `r_c = M / maximum capacity`.
 - `capacity(r) = maximum capacity` for `r <= r_c`.
@@ -130,8 +132,10 @@ The third row is the acceptance case from `BACKLOG.md`: a 4 t pick at 30 m on th
 
 ## Heaviest erection component
 
-- **MCT 88:** counter-jib, 4.38 t (variant A), datasheet p. 6.
+- **MCT 88:** counter-jib, 4.38 t (variant A, 11.9 m), datasheet p. 6; variant B is 4.25 t at the same
+  11.9 m. The p. 1 drawing's 13.7 m / 11.3 m counter-jib radius is a different dimension.
 - **MCT 85 F5:** counter-jib, 4.38 t (variant A, 14.6 m), datasheet p. 5; variant B is 4.25 t / 11.9 m.
+  Do not apply the MCT 88 11.9 m / 4.38 t pairing to the MCT 85 F5 table.
 
 These are component-weight tables, not erection sequences. They do not state the lift radius, rigging
 or assembly order. Confirm the actual heaviest lift against the manufacturer's erection manual before

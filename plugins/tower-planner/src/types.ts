@@ -96,6 +96,13 @@ export type CapacityModel = {
      * Cycle 2 behaviour.
      */
     loadChart?: readonly JibLoadChart[];
+    /**
+     * Published maximum working jib. Required on a `TowerCrane` and optional on
+     * this narrower engine type so clearly synthetic test fixtures can omit it;
+     * when absent, the longest load-chart row or the last tip-load row is the
+     * data limit. `capacityAt` never treats a jib above this limit as valid.
+     */
+    maxJibLengthM?: SourcedNumber;
 };
 
 export type TowerCrane = CapacityModel & {

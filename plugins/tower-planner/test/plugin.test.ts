@@ -47,8 +47,18 @@ describe("tower-planner plugin wiring", () => {
     test("exposes the MCT 88 with sourced values", () => {
         expect(MCT88.id).toBe("potain-mct-88");
         expect(MCT88.maxCapacityT.value).toBe(5);
-        expect(MCT88.maxJibLengthM.value).toBe(53.1);
+        // 52 m is the maximum working jib; 53.1 m is the overall tip length.
+        expect(MCT88.maxJibLengthM.value).toBe(52);
+        expect(MCT88.tipLoadByJib.at(-1)?.jibM.value).toBe(52);
+        expect(MCT88.tipLoadByJib.at(-1)?.tipT.value).toBe(1.15);
         expect(MCT88.tipLoadByJib[2].tipT.value).toBe(2.7);
+        expect(MCT88.dimensions.mastWidthM.value).toBe(1.2);
+        expect(MCT88.dimensions.mastWidthM.provenance).toEqual({
+            kind: "source",
+            sourceId: "datasheetOverview",
+        });
+        expect(MCT88.dimensions.counterJibLengthM.value).toBe(11.9);
+        expect(MCT88.heaviestErectionComponent.massT.value).toBe(4.38);
         expect(MCT88.sources.datasheetOverview.page).toBe(1);
         expect(MCT88.sources.datasheetDimensions.page).toBe(6);
     });
@@ -73,6 +83,7 @@ describe("tower-planner plugin wiring", () => {
         expect(MCT85F5.sources.datasheetOverview.page).toBe(1);
         expect(MCT85F5.sources.datasheetLoadCharts.page).toBe(3);
         expect(MCT85F5.sources.datasheetDimensions.page).toBe(5);
+        expect(MCT85F5.dimensions.counterJibLengthM.value).toBe(14.6);
         expect(MCT85F5.heaviestErectionComponent.massT.value).toBe(4.38);
     });
 });

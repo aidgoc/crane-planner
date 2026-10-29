@@ -16,7 +16,7 @@ number is found later, record it alongside the PDF index.
 
 | Crane | Document | Pages | What it supplies |
 | --- | --- | --- | --- |
-| Potain MCT 88 | Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Code 09-003-.5M-0610), 8-page local reference copy | pp. 1, 6; load-curve page recorded as p. 3 or p. 4 (unresolved) | 5 t maximum, 53.1 m maximum jib, metric tip-load labels, imperial 98 ft chart row, dimensions and component weights |
+| Potain MCT 88 | Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Code 09-003-.5M-0610), 8-page reference copy | pp. 1, 6; local load curves p. 4 (Cycle 2 copy recorded p. 3, unresolved) | 5 t maximum, 52 m maximum working jib (53.1 m overall tip length), metric tip-load labels, imperial 98 ft chart row, dimensions and component weights |
 | Potain MCT 85 F5 | Potain MCT 85 F5 Data Sheet, FEM 1.001-A3 (Manitowoc, Ref. `02D_FEM1001mt_MCT85F5_2026_05-0`), copyright 2026 Manitowoc, 8 pages | pp. 1, 3, 5 | 5 t maximum, 52 m maximum working jib, per-radius load curves for 8 jib lengths, counter-jib dimensions and masses |
 | Jaso J438PA.2R | Jaso J438PA.2R tower-crane brochure, EN 14439 C25 / FEM 1005-C25, dated 30/05/2025 (PDF metadata title `HT212.01.1.01`), 7 pages | pp. 1, 2, 6 (inspected only) | Luffing-jib configuration, imperial load chart, transport packing list |
 
@@ -30,7 +30,7 @@ committed. The e-catalogue URL stored in the JSON is
 the PDF copy because the e-catalogue blocks automated access. The MCT 85 F5 and Jaso PDFs are in
 `plugins/tower-planner/docs/`.
 
-### Local PDF checksums
+### PDF checksums
 
 The two PDFs present in the working tree have these SHA-256 checksums:
 
@@ -39,8 +39,10 @@ The two PDFs present in the working tree have these SHA-256 checksums:
 | `02D_FEM1001mt_MCT85F5_2026_05-0.pdf` | `601E6A186BCFD230D2D684689610F74BF9A6E717D6A7DD0ABE3807AC02A1E51C` |
 | `J438PA.2R_EN-14439-C25_LB-FT_HT21201101.pdf` | `894B918E32A36C2CEC57902E3FE38406CD51B793521DBFF741284D31C574C2B5` |
 
-The MCT 88 reference PDF is absent, so no checksum is recorded for it; none could be calculated from
-an available file.
+The MCT 88 reference PDF is not committed and is not in the working tree. The copy inspected for the
+Cycle 4 review has SHA-256
+`0B7A7DFFCC7BB8B5DD54BA69120D1828DF80F0C6FD7EAD7AC0D505EFB0F7B82F`. The checksum identifies the
+copy that was read; it does not grant redistribution permission, and the PDF must stay out of Git.
 
 ### Licensing note
 
@@ -64,16 +66,32 @@ was verified from the documents themselves.
 | Field | Value | Provenance |
 | --- | --- | --- |
 | Maximum capacity | 5 t | datasheet p. 1 |
-| Maximum jib | 53.1 m | datasheet p. 1 |
+| Maximum working jib | 52 m | datasheet p. 1; confirmed by the p. 4 curves and p. 5 jib-weight table, which both stop at 52 m |
+| Overall tip length | 53.1 m | datasheet p. 1 drawing; **not** a working jib configuration |
 | Default jib | 30 m | **INDICATIVE** — Cycle 2 project configuration, not a manufacturer recommendation |
-| Mast width | 1.2 m | datasheet p. 6 |
-| Counter-jib length | 11.9 m | datasheet p. 6 |
+| Mast width | 1.2 m × 1.2 m | datasheet p. 1 overview drawing; mast sections p. 7 also state 1.2 m |
+| Counter-jib length | 11.9 m (variants A and B) | datasheet p. 6 |
 | Counter-jib mass | 4.38 t (variant A); 4.25 t (variant B) | datasheet p. 6 |
 | Cab mass | 1.10 t | datasheet p. 6 |
 
 Tip-load table (jib length → published tip load): 20 m → 3.95 t, 25 m → 3.00 t, 30 m → 2.70 t,
-35 m → 2.27 t, 40 m → 1.95 t, 45 m → 1.70 t, 50 m → 1.45 t, 53.1 m → 1.15 t. These are the metric
-labels on datasheet p. 1 and the figures carried by the Cycle 2 starter table.
+35 m → 2.27 t, 40 m → 1.95 t, 45 m → 1.70 t, 50 m → 1.45 t, 52 m → 1.15 t. These are the metric
+labels on datasheet p. 1 and the figures carried by the Cycle 2 starter table. The previous 53.1 m
+row was the overall tip length, not a published jib configuration, and has been corrected to 52 m.
+
+The reference copy was re-read for the Cycle 4 review. Three points resolve the earlier ambiguity:
+
+- p. 1 draws the working jib at **52 m** with a **1.15 t** tip load and separately labels the
+  **53.1 m** overall tip. The p. 4 load curves and p. 5 jib-weight table both stop at 52 m.
+- p. 6 lists the counter-jib structural length as **11.9 m for both variants A and B**, with
+  **4380 kg** for A and **4250 kg** for B. The p. 1 drawing's **13.7 m (A) / 11.3 m (B)** label is a
+  counter-jib radius, a different dimension; it is not substituted for the p. 6 length.
+- p. 1 shows the **1.2 m × 1.2 m** mast, and p. 7 lists 1.2 m mast sections. The value is unchanged;
+  the catalogue's mast-width provenance was corrected from p. 6 to p. 1.
+
+The MCT 85 F5 must remain separate: its p. 5 table pairs 11.9 m with 4.25 t (variant B) and 14.6 m
+with 4.38 t (variant A). The MCT 88 entry's 11.9 m / 4.38 t pairing comes from the MCT 88 p. 6 table,
+not from the MCT 85 F5 table, and the two cranes' variant pairings must not be mixed.
 
 The `heaviestErectionComponent` value is 4.38 t (counter-jib, variant A). The p. 6 table is a
 component-weight table, not an erection-sequence plan; the actual heaviest lift and its radius must
@@ -136,10 +154,11 @@ row appears to end at 30 m with 2.5 t, while p. 1 labels the 30 m jib at 2.70 t.
 inconsistency in the source material. It is recorded here so nobody assumes the documents agree; the
 model keeps 2.70 t and does not silently adopt the 2.5 t point.
 
-The page number of that metric load-curve page is also ambiguous. The Cycle 2 mirrored copy records
-it as **p. 3**; the local 8-page reference copy places it on **p. 4**. Neither number is verified
-against the other copy, so the catalogue's `datasheetLoadCharts` entry keeps the Cycle 2 p. 3 number
-and records the p. 4 observation in its `note`. This source is **not referenced by any MCT 88
+The page number of that metric load-curve page is also ambiguous between copies. The local 8-page
+reference copy was re-inspected for this review: its metric load curves are on **p. 4**, and p. 3 is
+the anchorages page. The Cycle 2 mirrored copy records the load-curve page as **p. 3**; that number
+remains unverified against the local copy, so the catalogue's `datasheetLoadCharts` entry keeps the
+Cycle 2 p. 3 number and records the p. 4 observation in its `note`. This source is **not referenced by any MCT 88
 catalogue field**: the tip-load values use `datasheetOverview` p. 1, and the model does not use a
 per-radius chart. The source entry is retained only to document the §3.3 comparison. It is not a
 second capacity model and does not change the 2.70 t value.

@@ -20,6 +20,11 @@ export const WIND_DERATE_RULE = {
  * Cycle 2 `tipLoadAt`: linear interpolation between published jib/tip rows,
  * clamped to the first/last row outside the table. The interpolation is a
  * project convenience; the published rows themselves remain the source.
+ *
+ * This is a table helper, not a configuration check: it has no way to signal
+ * that a jib length is unpublished, so it clamps rather than returning an
+ * invalid value. `capacityAt` applies the published maximum and returns `null`
+ * above it; callers that need validity must use that function.
  */
 export function tipLoadAt(model: CapacityModel, jibM: number): number {
     if (!Number.isFinite(jibM)) {
@@ -67,6 +72,36 @@ export function cornerRadiusAt(model: CapacityModel, jibM: number): number {
 }
 
 const CHART_JIB_TOLERANCE_M = 1e-6;
+const MAX_JIB_TOLERANCE_M = 1e-9;
+
+/**
+ * Longest jib the model publishes capacity data for. A `TowerCrane` declares
+ * `maxJibLengthM`; a narrow test fixture may omit it, in which case the longest
+ * load-chart row or the last tip-load row is the data limit. The smaller of the
+ * declared maximum and the available data wins: a catalogue declaration must
+ * never let the engine clamp a longer, unpublished jib to the last row.
+ */
+export function publishedMaxJibM(model: CapacityModel): number | undefined {
+    let dataMaxM: number | undefined;
+
+    if (model.loadChart !== undefined && model.loadChart.length > 0) {
+        dataMaxM = model.loadChart.reduce(
+            (max, row) => (row.jibM.value > max ? row.jibM.value : max),
+            Number.NEGATIVE_INFINITY,
+        );
+    } else if (model.tipLoadByJib.length > 0) {
+        dataMaxM = model.tipLoadByJib[model.tipLoadByJib.length - 1].jibM.value;
+    }
+
+    if (dataMaxM !== undefined && !Number.isFinite(dataMaxM)) return undefined;
+
+    const declaredM = model.maxJibLengthM?.value;
+    if (declaredM === undefined) return dataMaxM;
+    if (!Number.isFinite(declaredM) || declaredM <= 0) return undefined;
+    if (dataMaxM === undefined) return declaredM;
+
+    return Math.min(declaredM, dataMaxM);
+}
 
 function findJibChart(model: CapacityModel, jibM: number): JibLoadChart | undefined {
     return model.loadChart?.find((row) => Math.abs(row.jibM.value - jibM) <= CHART_JIB_TOLERANCE_M);
@@ -125,7 +160,8 @@ function chartCapacityAt(chart: JibLoadChart, radiusM: number): number | null {
  * (see `WIND_DERATE_RULE`). `null`/`undefined` wind means no derate; negative or
  * non-finite wind is invalid and returns `null`. Invalid/non-finite geometry
  * also returns null instead of a NaN, so callers cannot accidentally render a
- * numeric capacity.
+ * numeric capacity. A jib above the model's published maximum (or above its
+ * last published tip-load/chart row) returns `null` before any interpolation.
  */
 export function capacityAt(
     model: CapacityModel,
@@ -134,6 +170,10 @@ export function capacityAt(
     windKmh?: number | null,
 ): number | null {
     if (!Number.isFinite(jibM) || jibM <= 0) return null;
+
+    const maxJibM = publishedMaxJibM(model);
+    if (maxJibM === undefined || jibM > maxJibM + MAX_JIB_TOLERANCE_M) return null;
+
     if (!Number.isFinite(radiusM)) return null;
     if (radiusM > jibM) return null;
     if (model.tipLoadByJib.length === 0) return null;

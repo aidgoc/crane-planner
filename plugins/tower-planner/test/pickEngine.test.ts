@@ -119,6 +119,19 @@ describe("evaluatePick", () => {
         expect(result.issue).toBeUndefined();
     });
 
+    test("accepts the 52 m maximum working jib and rejects a longer jib", () => {
+        // 1.15 t × 52 m = 59.8 t·m; 59.8 / 52 = 1.15 t. A 1.15 t pick is 100 %.
+        const atMaximum = evaluatePick(MCT88, { loadT: 1.15, radiusM: 52 }, { jibM: 52 });
+        expect(atMaximum.status).toBe("PASS");
+        expect(atMaximum.capacityT).toBeCloseTo(1.15, 10);
+        expect(atMaximum.utilisationPct).toBeCloseTo(100, 10);
+
+        // 53.1 m is the overall tip length, not a published jib configuration.
+        const overallTip = evaluatePick(MCT88, { loadT: 1, radiusM: 52 }, { jibM: 53.1 });
+        expect(overallTip.status).toBe("INVALID");
+        expect(overallTip.issue).toBe("jib-outside-published-range");
+    });
+
     test.each([
         { name: "zero load", pick: { loadT: 0, radiusM: 20 }, issue: "invalid-load" },
         { name: "negative load", pick: { loadT: -1, radiusM: 20 }, issue: "invalid-load" },
@@ -286,7 +299,7 @@ describe("MCT 85 F5 pick evaluation", () => {
         expect(result.status).toBe("PASS");
     });
 
-    test.each([10, 22, 32.5, 53.1])("marks the unpublished MCT 85 F5 jib %s m as INVALID", (jibM) => {
+    test.each([10, 22, 32.5, 53.1, 100])("marks the unpublished MCT 85 F5 jib %s m as INVALID", (jibM) => {
         const result = evaluatePick(MCT85F5, { loadT: 1, radiusM: 20 }, { jibM });
 
         expect(result.status).toBe("INVALID");

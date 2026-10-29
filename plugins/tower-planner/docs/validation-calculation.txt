@@ -116,18 +116,21 @@ never substituted into the capacity model.
 
 The local 8-page reference copy places the metric load curves on p. 4. Its 30 m
 row appears to end at 30 m with 2.5 t, while p. 1 labels the 30 m jib at 2.70 t.
-The Cycle 2 mirrored copy records the load-chart page as p. 3. The p. 3 versus
-p. 4 page number is unresolved; neither page is treated as verified. The
-catalogue's `datasheetLoadCharts` source keeps the Cycle 2 p. 3 number and notes
-the p. 4 observation. It is not referenced by any MCT 88 catalogue field and is
-retained only for this comparison. The model keeps 2.70 t.
+The Cycle 2 mirrored copy records the load-chart page as p. 3; the local copy's
+p. 3 is the anchorages page, so that number remains unverified against the local
+copy. The catalogue's `datasheetLoadCharts` source keeps the Cycle 2 p. 3 number
+and notes the p. 4 observation. It is not referenced by any MCT 88 catalogue
+field and is retained only for this comparison. The model keeps 2.70 t.
 
-4.3 Absent reference PDF
+4.3 Reference PDF availability
 
-The MCT 88 reference PDF is not in this repository. No SHA-256 checksum is
-recorded for it because none could be calculated from an available file. The
-imperial readings above come from the Cycle 2 notes, not from a fresh read of
-that PDF.
+The MCT 88 reference PDF is not in this repository. A copy held outside the
+repository was inspected for the Cycle 4 review; its SHA-256 is
+0B7A7DFFCC7BB8B5DD54BA69120D1828DF80F0C6FD7EAD7AC0D505EFB0F7B82F. Page 1
+confirms 52 m as the maximum working jib, 53.1 m as the overall tip length and
+1.2 m as the mast width; page 6 confirms 11.9 m as the counter-jib structural
+length and 4.38 t as the variant-A counter-jib mass. The imperial readings in
+section 3 still come from the Cycle 2 notes, not from a fresh read of that PDF.
 
 
 5. MCT 85 F5 SPOT CHECKS - SEPARATE FROM THE MCT 88 MODEL
