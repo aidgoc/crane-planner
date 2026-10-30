@@ -62,6 +62,9 @@ const MIN_OVERLAP_MM3 = 1.0;
  *   a minimum distance of 0 means "touching OR overlapping", and without the boolean test an overlap
  *   would be reported as merely touching.
  * @returns ClearanceResult containing distance in metres and collision flags
+ * @throws Error if BRepExtrema cannot compute a distance (negative result, e.g. an empty or invalid
+ *   shape). No distance is guessed in that case; the caller must treat it as "distance unavailable",
+ *   never as 0 and never as safe.
  */
 export function computeClearanceDistance(
     shapeA: IShape,

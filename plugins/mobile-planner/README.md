@@ -58,11 +58,23 @@ In unit tests there is no running app, so tests create `new ShapeFactory()` from
 | `isCollision` | `boolean` | `true` if solids penetrate/overlap each other |
 | `isTouching` | `boolean` | `true` if solids touch tangentially (0 gap) without volume penetration |
 
+### Errors and fail-safe behaviour
+
+| Situation | Result |
+|---|---|
+| Solids are apart (gap greater than the kernel tolerance) | `distanceM > 0`, `isCollision = false`, `isTouching = false` |
+| Gap is 0 and the shared volume is tiny (at most 1 mm³, numerical noise) | `isTouching = true` |
+| Gap is 0 and the shared volume is larger than 1 mm³ | `isCollision = true` |
+| Gap is 0 and the overlap test (`booleanCommon`) fails or throws | `isCollision = true` (fail safe, never "touching") |
+| Gap is 0 and `booleanCommon` returns an empty shape (no shared volume) | `isTouching = true` |
+| `extremaDistance` returns a negative value (empty or invalid shape) | `Error` is thrown. Catch it and show "distance unavailable". Never treat it as 0 or as safe. |
+| `createBuildingBox` / `createBoomCylinder` cannot build the solid | `Error` is thrown with the kernel message |
+
 ---
 
 ## 3. Verified Acceptance Test Cases (Task M5)
 
-The 4 backlog dry-run cases, plus 2 safety cases, pass automated testing against OpenCASCADE with hand-worked verification:
+8 automated tests pass against OpenCASCADE with hand-worked verification: a units check, the 4 backlog dry-run cases (1 to 4), 2 safety cases (5 and 6) and 1 inclined boom case (7):
 
 1. **2.0 m separation:** Box $[0, 10]\,\text{m}$, Cylinder center $X = 12.5\,\text{m}$, $R = 0.5\,\text{m}$.  
    Nearest surface = $12.5 - 0.5 = 12.0\,\text{m}$. Distance $= 12.0 - 10.0 = \mathbf{2.00\,\text{m}}$ ($\pm 0.1\,\text{m}$).
@@ -77,6 +89,9 @@ The 4 backlog dry-run cases, plus 2 safety cases, pass automated testing against
    Distance $= 0$, shared volume $= \pi \cdot 0.5^2 \cdot 15 = 11.78\,\text{m}^3$, so `isCollision = true`.
 6. **Overlap test unavailable (fail safe):** if `booleanCommon` throws, a zero distance is reported as
    `isCollision = true`, never as `isTouching`.
+7. **Inclined boom (45 degrees):** Box $10 \times 10 \times 20\,\text{m}$ at the origin, cylinder $R = 0.5\,\text{m}$, base centre $(12.5, 5, 5)\,\text{m}$,
+   axis tilted 45 degrees from vertical, away from the building. The nearest rim point of the tilted base disc is at
+   $x = 12.5 - 0.5\cos 45^\circ = 12.146\,\text{m}$. Distance $= 12.146 - 10 = \mathbf{2.146\,\text{m}}$.
 
 ---
 
