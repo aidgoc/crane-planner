@@ -204,6 +204,57 @@ describe("TowerPickCheckCommand", () => {
         expect(summary.getAttribute("data-all-pass")).toBe("false");
     });
 
+    test("marks a malformed wind entry as INVALID instead of treating it as no wind", async () => {
+        let dialogContent: HTMLElement | undefined;
+
+        const onDialog = (_title: I18nKeys, content: HTMLElement) => {
+            dialogContent = content;
+        };
+
+        PubSub.default.sub("showDialog", onDialog);
+        try {
+            await new TowerPickCheckCommand().execute({} as IApplication);
+        } finally {
+            PubSub.default.removeAll("showDialog");
+        }
+
+        if (dialogContent === undefined) throw new Error("Command did not publish dialog content.");
+
+        // Chromium reports an incomplete numeric entry such as "1e" as
+        // value === "" with badInput === true. Happy DOM cannot enter that state
+        // from a value, so reproduce the browser-reported validity on the real
+        // dialog input and trigger the command's normal recalculate path.
+        const numberInputs = dialogContent.querySelectorAll('input[type="number"]');
+        const windInput = numberInputs[1];
+        expect(windInput).not.toBeUndefined();
+        if (windInput === undefined) throw new Error("Wind input is missing.");
+        Object.defineProperty(windInput, "validity", {
+            configurable: true,
+            value: { badInput: true },
+        });
+        windInput.dispatchEvent(new Event("input"));
+
+        const statuses = Array.from(dialogContent.querySelectorAll("[data-status]")).map((element) =>
+            element.getAttribute("data-status"),
+        );
+        expect(statuses).toEqual(["INVALID", "INVALID", "INVALID"]);
+
+        const capacities = Array.from(dialogContent.querySelectorAll("tbody tr")).map(
+            (row) => row.querySelectorAll("td")[3].textContent,
+        );
+        expect(capacities).toEqual(["-", "-", "-"]);
+
+        const utilisations = Array.from(dialogContent.querySelectorAll("tbody tr")).map(
+            (row) => row.querySelectorAll("td")[4].textContent,
+        );
+        expect(utilisations).toEqual(["-", "-", "-"]);
+
+        const summary = dialogContent.querySelector("[data-all-pass]");
+        expect(summary).not.toBeNull();
+        if (summary === null) throw new Error("Dialog summary is missing.");
+        expect(summary.getAttribute("data-all-pass")).toBe("false");
+    });
+
     test("renders the overview source and the separate chart source for the MCT 85 F5", async () => {
         const restore = installEnglishLocale();
         let dialogContent: HTMLElement | undefined;

@@ -287,7 +287,15 @@ export class TowerPickCheckCommand implements ICommand {
             const crane = selectedCrane();
             const jibM = Number(jibInput.value);
             const windText = windInput.value.trim();
-            const windKmh = windText === "" ? null : Number(windText);
+            // Chromium reports malformed or incomplete numeric entries such as
+            // "1e" as an empty value with badInput set. That is invalid wind,
+            // not the genuine empty field that means "no wind derate".
+            let windKmh: number | null;
+            if (windInput.validity.badInput) {
+                windKmh = Number.NaN;
+            } else {
+                windKmh = windText === "" ? null : Number(windText);
+            }
             const evaluation = evaluateCrane(crane, readPicks(), { jibM, windKmh });
 
             evaluation.picks.forEach((result, index) => {
