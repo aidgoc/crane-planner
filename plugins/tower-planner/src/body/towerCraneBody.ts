@@ -22,6 +22,12 @@ export interface TowerCraneBodyNodeOptions {
     crane?: typeof MCT88;
     /** Jib length in metres. Defaults to catalogue defaultJibM. */
     jibLengthM?: number;
+    /**
+     * Mast height in metres.
+     * If not provided, defaults to 50 m (INDICATIVE - freestanding height for MCT 88).
+     * This is not a manufacturer-sourced value; a real project should use the specific mast configuration.
+     */
+    mastHeightM?: number;
 }
 
 @serializable()
@@ -56,6 +62,20 @@ export class TowerCraneBodyNode extends ParameterShapeNode {
         this.setPropertyEmitShapeChanged("jibLengthM", value);
     }
 
+    @serialize()
+    get mastHeightM(): number {
+        return this.getPrivateValue("mastHeightM");
+    }
+    set mastHeightM(value: number) {
+        if (!Number.isFinite(value)) {
+            throw new Error("mastHeightM must be a finite number");
+        }
+        if (value <= 0) {
+            throw new Error("mastHeightM must be greater than 0");
+        }
+        this.setPropertyEmitShapeChanged("mastHeightM", value);
+    }
+
     get crane(): typeof MCT88 {
         return this._crane;
     }
@@ -67,6 +87,11 @@ export class TowerCraneBodyNode extends ParameterShapeNode {
             "jibLengthM",
             options.jibLengthM ?? this._crane.defaultJibM.value,
         );
+        // Mast height: 50 m INDICATIVE default (freestanding height for MCT 88).
+        // This is NOT a manufacturer-sourced value; it is a planning assumption.
+        // A real project should use the specific mast configuration from the manufacturer.
+        const defaultMastHeightM = options.mastHeightM ?? 50;
+        this.setPrivateValue("mastHeightM", defaultMastHeightM);
     }
 
     generateShape(): Result<IShape> {
@@ -74,11 +99,7 @@ export class TowerCraneBodyNode extends ParameterShapeNode {
         const jibLengthMm = metresToMillimetres(this.jibLengthM);
         const mastWidthMm = metresToMillimetres(crane.dimensions.mastWidthM.value);
         const counterJibLengthMm = metresToMillimetres(crane.dimensions.counterJibLengthM.value);
-
-        // Mast height: INDICATIVE - freestanding height for MCT 88 is approximately 50m
-        // This is not a sourced value; a real project would use the specific mast configuration.
-        const MAST_HEIGHT_M_INDICATIVE = 50;
-        const mastHeightMm = metresToMillimetres(MAST_HEIGHT_M_INDICATIVE);
+        const mastHeightMm = metresToMillimetres(this.mastHeightM);
 
         // Cross-section dimensions (INDICATIVE)
         const JIB_WIDTH_MM = metresToMillimetres(2.0);    // 2m wide
@@ -107,7 +128,7 @@ export class TowerCraneBodyNode extends ParameterShapeNode {
             slewPlane,
             metresToMillimetres(3.0), // 3m wide
             metresToMillimetres(3.0), // 3m deep
-            SLEW_UNIT_HEIGHT_MM,
+            metresToMillimetres(4.0), // 4m tall
         );
         if (!slewResult.isOk) return slewResult;
         shapes.push(slewResult.value);
@@ -115,26 +136,26 @@ export class TowerCraneBodyNode extends ParameterShapeNode {
         // 3. Jib - horizontal box extending along +X from slewing unit center
         // Jib starts at slewing unit center (x=0) and extends to +jibLengthMm
         const jibPlane = planeXY.translateTo(
-            new XYZ({ x: 0, y: 0, z: mastHeightMm + SLEW_UNIT_HEIGHT_MM / 2 }),
+            new XYZ({ x: 0, y: 0, z: mastHeightMm + metresToMillimetres(4.0) / 2 }),
         );
         const jibResult = shapeFactory.box(
             jibPlane,
             jibLengthMm,
-            JIB_WIDTH_MM,
-            JIB_DEPTH_MM,
+            metresToMillimetres(2.0),    // 2m wide
+            metresToMillimetres(2.5),    // 2.5m deep
         );
         if (!jibResult.isOk) return jibResult;
         shapes.push(jibResult.value);
 
         // 4. Counter-jib - horizontal box extending along -X
         const counterJibPlane = planeXY.translateTo(
-            new XYZ({ x: -counterJibLengthMm, y: 0, z: mastHeightMm + SLEW_UNIT_HEIGHT_MM / 2 }),
+            new XYZ({ x: -counterJibLengthMm, y: 0, z: mastHeightMm + metresToMillimetres(4.0) / 2 }),
         );
         const counterJibResult = shapeFactory.box(
             counterJibPlane,
             counterJibLengthMm,
-            COUNTER_JIB_WIDTH_MM,
-            COUNTER_JIB_DEPTH_MM,
+            metresToMillimetres(3.0),
+            metresToMillimetres(2.5),
         );
         if (!counterJibResult.isOk) return counterJibResult;
         shapes.push(counterJibResult.value);
@@ -144,7 +165,7 @@ export class TowerCraneBodyNode extends ParameterShapeNode {
             new XYZ({
                 x: -counterJibLengthMm - metresToMillimetres(1.0),
                 y: 0,
-                z: mastHeightMm + SLEW_UNIT_HEIGHT_MM / 2,
+                z: mastHeightMm + metresToMillimetres(4.0) / 2,
             }),
         );
         const cwResult = shapeFactory.box(
