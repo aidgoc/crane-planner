@@ -1,6 +1,6 @@
 # Mobile Crane Planner
 
-This plugin ports the Cycle 3 mobile-crane KIT and load-chart interpolation.
+This plugin ports the Cycle 3 mobile-crane KIT and exact load-chart lookup.
 Calculations use metres; conversion to Chili3D millimetres is intentionally not
 part of M1.
 

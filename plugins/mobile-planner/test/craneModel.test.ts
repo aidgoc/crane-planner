@@ -7,6 +7,8 @@ import { createLiftSummary } from "../src/ui/liftSummary";
 describe("mobile crane KIT", () => {
     test("is frozen and exposes source metadata", () => {
         expect(Object.isFrozen(KIT)).toBe(true);
+        expect(Object.isFrozen(KIT.chart)).toBe(true);
+        expect(KIT.chart.every((cell) => Object.isFrozen(cell))).toBe(true);
         expect(KIT.name).toBe("Grove GMK5250L-1");
         expect(KIT.PIVOT_OFFSET_M).toBe(0.8);
         expect(KIT.source).toEqual({
@@ -30,17 +32,81 @@ describe("mobile crane KIT", () => {
         expect(capacityAt(70, 30)).toBeCloseTo(12.1, 6);
     });
 
-    test("interpolates the 38 m boom row at an off-grid 11 m radius", () => {
-        // The 10 m and 12 m chart cells are 53 t and 47.5 t: (53 + 47.5) / 2 = 50.25 t.
-        const capacity = capacityAt(38, 11);
+    test("uses exact manufacturer values for the reported examples", () => {
+        expect(capacityAt(38, 12)).toBe(47.5);
+        expect(capacityAt(38, 11)).toBe(50.5);
+    });
 
-        expect(capacity).toBeCloseTo(50.25, 6);
-        expect(capacity).not.toBe(53);
-        expect(capacity).not.toBe(47.5);
+    test("returns every selected page-17 chart cell without interpolation", () => {
+        expect(
+            [
+                [13.3, 5, 121],
+                [13.3, 8, 84.5],
+                [13.3, 10, 64.5],
+                [23.6, 5, 111],
+                [23.6, 8, 83.5],
+                [23.6, 10, 68],
+                [23.6, 11, 62],
+                [23.6, 12, 57],
+                [23.6, 15, 45],
+                [23.6, 20, 27],
+                [38, 5, 59],
+                [38, 8, 58.5],
+                [38, 10, 53],
+                [38, 11, 50.5],
+                [38, 12, 47.5],
+                [38, 15, 40],
+                [38, 20, 30.5],
+                [38, 30, 17.2],
+                [52.4, 10, 31],
+                [52.4, 11, 31],
+                [52.4, 12, 31],
+                [52.4, 15, 28.5],
+                [52.4, 20, 23.5],
+                [52.4, 30, 15],
+                [70, 12, 14.5],
+                [70, 15, 14.5],
+                [70, 20, 14.5],
+                [70, 30, 12.1],
+            ].map(([boomLengthM, radiusM, capacityT]) => [capacityAt(boomLengthM, radiusM), capacityT]),
+        ).toEqual([
+            [121, 121],
+            [84.5, 84.5],
+            [64.5, 64.5],
+            [111, 111],
+            [83.5, 83.5],
+            [68, 68],
+            [62, 62],
+            [57, 57],
+            [45, 45],
+            [27, 27],
+            [59, 59],
+            [58.5, 58.5],
+            [53, 53],
+            [50.5, 50.5],
+            [47.5, 47.5],
+            [40, 40],
+            [30.5, 30.5],
+            [17.2, 17.2],
+            [31, 31],
+            [31, 31],
+            [31, 31],
+            [28.5, 28.5],
+            [23.5, 23.5],
+            [15, 15],
+            [14.5, 14.5],
+            [14.5, 14.5],
+            [14.5, 14.5],
+            [12.1, 12.1],
+        ]);
     });
 
     test.each([
         [52.4, 8],
+        [70, 10],
+        [70, 11],
+        [38, 7],
+        [18.6, 5],
         [13.3, 20],
         [99, 10],
         [38, 40],
@@ -67,5 +133,23 @@ describe("mobile crane KIT", () => {
         expect(summary).toContain(`${expectedCapacityT} t`);
         expect(summary).toContain(KIT.name);
         expect(summary).toContain("Planning aid, not a certified lift plan.");
+    });
+
+    test.each([
+        [Number.NaN, 10],
+        [38, Number.POSITIVE_INFINITY],
+        [-1, 10],
+        [38, -1],
+    ])("rejects invalid capacity input %s m / %s m", (boomLengthM, radiusM) => {
+        expect(() => capacityAt(boomLengthM, radiusM)).toThrow();
+    });
+
+    test.each([
+        [-1, 45],
+        [32, -1],
+        [32, 91],
+        [32, Number.NaN],
+    ])("rejects invalid radius calculation input %s m / %s degrees", (boomLengthM, angleDeg) => {
+        expect(() => expectedRadiusM(boomLengthM, angleDeg)).toThrow();
     });
 });
