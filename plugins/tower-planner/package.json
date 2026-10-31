@@ -1,0 +1,20 @@
+{
+    "name": "tower-planner",
+    "version": "0.1.0",
+    "description": "DGOC tower-crane catalogue, capacity, pick-check, placement and clearance plugin for Chili3D",
+    "main": "extension.js",
+    "type": "module",
+    "scripts": {
+        "build": "rspack build",
+        "preview": "npm run build && echo 'Debug URL: http://localhost:8080?plugin=http://localhost:8687' && npx servitsy -p 8687 --cors",
+        "package": "npm run build && node ../scripts/package-plugin.mjs dist/tower-planner.chiliplugin manifest.json importmap.json icons dist"
+    },
+    "keywords": [
+        "chili3d",
+        "plugin",
+        "crane",
+        "tower-crane",
+        "lift-planning"
+    ],
+    "author": "DGOC Crane Planner"
+}

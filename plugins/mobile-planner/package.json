@@ -10,5 +10,14 @@
     "dependencies": {
         "@chili3d/core": "*",
         "@chili3d/wasm": "*"
+    "main": "dist/main.js",
+    "type": "module",
+    "scripts": {
+        "build": "rspack build",
+        "test": "rstest",
+        "package": "npm run build && node ../scripts/package-plugin.mjs dist/mobile-planner.chiliplugin manifest.json importmap.json dist icons"
+    },
+    "dependencies": {
+        "@chili3d/core": "*"
     }
 }
