@@ -36,6 +36,7 @@ const PLUGINS = [
     { name: "macro", dir: path.join(pluginsBase, "macro") },
     { name: "mobile-planner", dir: path.join(pluginsBase, "mobile-planner") },
     { name: "visual-programming", dir: path.join(pluginsBase, "visual-programming") },
+    { name: "site-model", dir: path.join(pluginsBase, "site-model") },
     { name: "tower-planner", dir: path.join(pluginsBase, "tower-planner") },
 ];
 
