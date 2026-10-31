@@ -1,15 +1,15 @@
 {
-    "name": "Tower Planner",
+    "name": "DGOC Tower Crane Planner",
     "version": "0.1.0",
-    "description": "Tower crane placement, plan rings and clearance checks",
-    "icon": "icons/tower-crane.svg",
+    "description": "Sourced tower-crane catalogue, capacity check, placement, plan rings and clearance checks for the DGOC crane planner",
     "main": "dist/main.js",
     "css": "dist/main.css",
+    "icon": "icons/tower.svg",
     "author": {
-        "name": "DGOC"
+        "name": "DGOC Crane Planner"
     },
     "engines": {
-        "chili3d": ">=0.6"
+        "chili3d": ">=0.7"
     },
     "importmap": "importmap.json"
 }
