@@ -2,6 +2,7 @@
 // See LICENSE file in the project root for full license information.
 
 import { execSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { cp, mkdir, readdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,6 +34,7 @@ const targetBase = cliOpts.output || path.join(rootDir, "dist", "plugins");
 
 const PLUGINS = [
     { name: "macro", dir: path.join(pluginsBase, "macro") },
+    { name: "mobile-planner", dir: path.join(pluginsBase, "mobile-planner") },
     { name: "visual-programming", dir: path.join(pluginsBase, "visual-programming") },
     { name: "site-model", dir: path.join(pluginsBase, "site-model") },
     { name: "tower-planner", dir: path.join(pluginsBase, "tower-planner") },
@@ -59,6 +61,25 @@ async function copyDir(src, dest) {
     }
 }
 
+/**
+ * Recursively list PDF files under a directory. Source PDFs stay in the
+ * plugin's docs/ directory; they must never reach the distributable package
+ * unless redistribution has been cleared.
+ */
+async function findPdfFiles(dir) {
+    const pdfs = [];
+    const entries = await readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+        const fullPath = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            pdfs.push(...(await findPdfFiles(fullPath)));
+        } else if (entry.name.toLowerCase().endsWith(".pdf")) {
+            pdfs.push(fullPath);
+        }
+    }
+    return pdfs;
+}
+
 async function main() {
     console.log(`[build-plugins] Plugins source: ${pluginsBase}`);
     console.log(`[build-plugins] Output target:  ${targetBase}`);
@@ -83,12 +104,27 @@ async function main() {
         const pluginDist = path.join(plugin.dir, "dist");
         const manifest = path.join(plugin.dir, "manifest.json");
         const icons = path.join(plugin.dir, "icons");
+        const importmap = path.join(plugin.dir, "importmap.json");
         const targetDir = path.join(targetBase, plugin.name);
         console.log(`[build-plugins] Copying ${plugin.dir} → ${targetDir}`);
         try {
             await copyDir(pluginDist, path.join(targetDir, "dist"));
             await copyDir(icons, path.join(targetDir, "icons"));
             await cp(manifest, path.join(targetDir, "manifest.json"));
+            if (existsSync(importmap)) {
+                await cp(importmap, path.join(targetDir, "importmap.json"));
+            }
+
+            // The copy list above deliberately excludes docs/. Fail loudly if a
+            // PDF ever appears in the distributable through a future change.
+            const pdfs = await findPdfFiles(targetDir);
+            if (pdfs.length > 0) {
+                throw new Error(
+                    `Refusing to package PDFs in ${targetDir}: ${pdfs.join(", ")}. ` +
+                        "Remove them from the distributable or confirm redistribution permission first.",
+                );
+            }
+
             console.log(`[build-plugins] ✅ ${plugin.name} built and copied\n`);
         } catch (err) {
             console.error(`[build-plugins] ❌ Failed to copy output for ${plugin.name}: ${err.message}`);
