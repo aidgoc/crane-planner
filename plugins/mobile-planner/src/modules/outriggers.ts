@@ -221,9 +221,10 @@ export function calculatePadReactionsFromLift(input: CraneLiftReactionsInput): P
     const loadXM = input.radiusM * Math.cos(angleRad);
     const loadYM = input.radiusM * Math.sin(angleRad);
 
-    // NOTE: Crane CG offset assumed fixed; real crane CG moves with boom angle/slew. With the default offset
-    // of 0 the counterweight is ignored, and the slew centre is taken as the centre of the 4 pads.
-    // INDICATIVE simplification.
+    // NOTE: Crane CG offset assumed fixed; real crane CG moves with boom angle/slew.
+    // With the default offset of 0 the counterweight CG is assumed at the slew centre
+    // (its mass is included in craneWeightT), and the slew centre is taken as
+    // the centre of the 4 pads. INDICATIVE simplification.
     const craneCgX = input.craneCgOffsetM?.xM ?? 0;
     const craneCgY = input.craneCgOffsetM?.yM ?? 0;
     assertFiniteNumber(craneCgX, "craneCgOffsetM.xM");
