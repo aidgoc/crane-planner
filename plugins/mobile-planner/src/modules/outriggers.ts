@@ -5,6 +5,9 @@ import type { CranePointM } from "./craneModel";
 
 export const PLANNING_DISCLAIMER = "Planning aid, not a certified lift plan." as const;
 
+/** Standard gravity: a mass of 1 tonne weighs 9.80665 kN. Used to convert t/m2 to kPa. */
+const STANDARD_GRAVITY = 9.80665;
+
 export type OutriggerId = "frontLeft" | "frontRight" | "rearLeft" | "rearRight";
 
 export type OutriggerPad = {
@@ -218,6 +221,9 @@ export function calculatePadReactionsFromLift(input: CraneLiftReactionsInput): P
     const loadXM = input.radiusM * Math.cos(angleRad);
     const loadYM = input.radiusM * Math.sin(angleRad);
 
+    // NOTE: Crane CG offset assumed fixed; real crane CG moves with boom angle/slew. With the default offset
+    // of 0 the counterweight is ignored, and the slew centre is taken as the centre of the 4 pads.
+    // INDICATIVE simplification.
     const craneCgX = input.craneCgOffsetM?.xM ?? 0;
     const craneCgY = input.craneCgOffsetM?.yM ?? 0;
     assertFiniteNumber(craneCgX, "craneCgOffsetM.xM");
@@ -294,7 +300,7 @@ export function calculateGroundBearing(
     assertPositiveNumber(padAreaM2, "padAreaM2");
 
     const pressureT_M2 = reactionT / padAreaM2;
-    const pressureKPa = pressureT_M2 * 9.80665;
+    const pressureKPa = pressureT_M2 * STANDARD_GRAVITY;
 
     // A negative reaction means the pad has lifted off the ground: never PASS (fail-safe).
     const padUplifted = reactionT < 0;
