@@ -42,7 +42,12 @@ function formatNumber(value: number, digits = 3): string {
 }
 
 function formatPoint(point: { x: number; y: number }): string {
-    return `(${point.x.toFixed(2)}, ${point.y.toFixed(2)}) m`;
+    return `(${formatCoordinate(point.x)}, ${formatCoordinate(point.y)}) m`;
+}
+
+function formatCoordinate(value: number): string {
+    const normalized = Math.abs(value) < 0.005 ? 0 : value;
+    return normalized.toFixed(2);
 }
 
 export class TowerCranePlacementPanel {
@@ -61,13 +66,14 @@ export class TowerCranePlacementPanel {
     private catalogue = createDefaultCraneCatalogue();
     private placement: CranePlacement = { ...DEFAULT_TOWER_CRANE_PLACEMENT };
     private layout: CraneLayout = deriveCraneLayout(this.catalogue, this.placement);
+    private valid = true;
     private dom: HTMLElement | undefined;
     private dragPointerId: number | undefined;
     private disposed = false;
     private shown = false;
     private onDisposeCallback: (() => void) | undefined;
 
-    constructor(private readonly view: IView) {
+    constructor(private view: IView) {
         this.scene = new CraneScene(view);
         this.mastX = this.createNumberInput(this.placement.x);
         this.mastY = this.createNumberInput(this.placement.y);
@@ -106,9 +112,10 @@ export class TowerCranePlacementPanel {
         if (this.disposed || this.shown) return;
         this.shown = true;
 
-        this.scene.update(this.layout);
-        this.renderResults(this.layout);
+        this.refresh();
         PubSub.default.sub("documentClosed", this.handleDocumentClosed);
+        PubSub.default.sub("viewClosed", this.handleViewClosed);
+        PubSub.default.sub("activeViewChanged", this.handleActiveViewChanged);
         PubSub.default.pub("showFloatPanel", {
             title: "towerplanner.panel.title" as I18nKeys,
             content: this.root,
@@ -283,12 +290,28 @@ export class TowerCranePlacementPanel {
         }
 
         this.setErrors(validation);
-        if (validation.length > 0) return;
+        this.valid = validation.length === 0;
+        if (!this.valid) {
+            this.clearInvalidState();
+            return;
+        }
 
         this.layout = deriveCraneLayout(this.catalogue, this.placement);
         this.slewSlider.value = String(this.layout.slewAngleDeg);
         this.scene.update(this.layout);
         this.renderResults(this.layout);
+    }
+
+    private clearInvalidState() {
+        this.scene.clear();
+        this.results.mast.value.textContent = "—";
+        this.results.slew.value.textContent = "—";
+        this.results.minRing.value.textContent = "—";
+        this.results.maxRing.value.textContent = "—";
+        this.results.counterRing.value.textContent = "—";
+        this.results.jibTip.value.textContent = "—";
+        this.results.counterTip.value.textContent = "—";
+        this.results.baseRing.value.textContent = "—";
     }
 
     private setErrors(errors: string[]) {
@@ -403,7 +426,7 @@ export class TowerCranePlacementPanel {
     }
 
     private isNearMast(event: PointerEvent): boolean {
-        if (!this.dom) return false;
+        if (!this.valid || !this.dom) return false;
 
         const rect = this.dom.getBoundingClientRect();
         const mast = new XYZ(
@@ -423,11 +446,38 @@ export class TowerCranePlacementPanel {
         }
     };
 
+    private readonly handleViewClosed = (view: IView) => {
+        if (view === this.view) {
+            this.dispose(false);
+        }
+    };
+
+    private readonly handleActiveViewChanged = (view: IView | undefined) => {
+        if (this.disposed || view === this.view) return;
+        if (view === undefined || view.document !== this.view.document) {
+            this.dispose(false);
+            return;
+        }
+        this.rebindView(view);
+    };
+
+    private rebindView(view: IView) {
+        if (this.disposed || view === this.view) return;
+
+        this.detachViewEvents();
+        this.scene.setView(view);
+        this.view = view;
+        this.refresh();
+        this.attachViewEvents();
+    }
+
     dispose(updateScene = true) {
         if (this.disposed) return;
         this.disposed = true;
 
         PubSub.default.remove("documentClosed", this.handleDocumentClosed);
+        PubSub.default.remove("viewClosed", this.handleViewClosed);
+        PubSub.default.remove("activeViewChanged", this.handleActiveViewChanged);
         this.mastX.removeEventListener("input", this.handleFieldInput);
         this.mastY.removeEventListener("input", this.handleFieldInput);
         this.minHookRadius.removeEventListener("input", this.handleFieldInput);
