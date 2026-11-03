@@ -8,7 +8,7 @@ MVP cut order if late (applies to both teams): 1 travel-time heatmap and two-cra
 
 ### plugins/site-model (Ajit lead; everyone reviews)
 
-Owners (changed 3 Nov 2026 by DGOC to balance load): Ajit owns S1 to S6; Sujal owns S7; Anjali owns S8.
+Owners (changed 3 Nov 2026 by DGOC to balance load): Ajit owns S1 to S6; Sujal owns S7, reviewed by Anjali (T10) and Ajit (M9) because both reports use it; Anjali owns S8, signed off by Rushikesh for the mobile side.
 
 | # | MVP item | Acceptance test | By |
 |---|---|---|---|
