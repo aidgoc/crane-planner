@@ -9,6 +9,7 @@ import { KIT } from "./modules/craneModel";
 export * from "./body/mobileCraneBody";
 export * from "./clearance/distance";
 export * from "./clearance/siteClearance";
+export * from "./clearance/swingSweep";
 export * from "./modules/craneModel";
 export * from "./modules/outriggers";
 export * from "./modules/placementState";
