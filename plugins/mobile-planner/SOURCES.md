@@ -35,6 +35,9 @@ interpolate or extrapolate values that the manufacturer does not publish.
 | Power line vertical wall extents (Y ±200 m, Z 0–200 m) | Geometric model for power line hazard | Conservative large bounding extent (wire height not in sample data) | INDICATIVE / ASSUMPTION |
 | Building clearance limit (default 2.0 m in tests) | Minimum safe distance to buildings | User-supplied parameter / test input (not from standard) | USER INPUT / PARAMETER |
 | Boom radius (e.g. 0.5 m in tests) | Boom cylinder geometry | User-supplied parameter (not in crane load chart) | USER INPUT / PARAMETER |
+| Swing sweep step 2 deg to 5 deg; 10 cm tolerance between steps | M7 sampling step and acceptance tolerance | BACKLOG.md, item M7 | PROJECT REQUIREMENT |
+| MAX_SWEEP_SAMPLES = 5000 | Largest number of slew angles in one sweep (guard against a tiny step) | Project limit, chosen so 360 deg at 0.1 deg is allowed; not from a standard | INDICATIVE / ASSUMPTION |
+| M7 acceptance pose: pivot (10, 10, 0) m, boom 12 m, radius 0.5 m, Tower A corner (25, 20) m | Hand-calculated 6.017 m minimum (D - sqrt(L^2 + r^2)) | Test inputs; Tower A from public/sample-site/sample-site.json | USER INPUT / SAMPLE SITE |
 
 Blank cells on page 17 remain `null` in the implementation and are not treated as
 fabricated values. The exact chart configuration is full outriggers, 7.8 m track
