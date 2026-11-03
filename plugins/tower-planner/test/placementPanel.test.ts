@@ -4,6 +4,7 @@
 import { type IView, PubSub, type PubSubEventMap } from "@chili3d/core";
 import { createMockView } from "@chili3d/core/test-utils";
 import { afterEach, expect, rs, test } from "@rstest/core";
+import type { OversailSite } from "../src/model/oversailTypes";
 import { TowerCranePlacementPanel } from "../src/ui/placementPanel";
 
 afterEach(() => {
@@ -37,17 +38,23 @@ function dispatchPointer(dom: HTMLElement, type: string, props: Partial<PointerE
     dom.dispatchEvent(event);
 }
 
-function showPanel(view: IView) {
+function showPanel(view: IView, site?: OversailSite) {
     let content: HTMLElement | undefined;
     const handler: PubSubEventMap["showFloatPanel"] = (options) => {
         content = options.content;
     };
     PubSub.default.sub("showFloatPanel", handler);
-    const panel = new TowerCranePlacementPanel(view);
+    const panel = new TowerCranePlacementPanel(view, site);
     panel.show();
     PubSub.default.remove("showFloatPanel", handler);
     if (!content) throw new Error("panel content was not published");
     return { panel, content };
+}
+
+function setInput(content: HTMLElement, label: string, value: string) {
+    const input = fieldInput(content, label);
+    input.value = value;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
 function findSpan(content: HTMLElement, text: string): HTMLSpanElement {
@@ -231,5 +238,64 @@ test("invalid input clears rings and results instead of leaving stale values", (
     expect(displaySpy).toHaveBeenCalledTimes(6);
     expect(resultValue(content, "Mast")).toBe("(5.00, 0.00) m");
     expect(resultValue(content, "Max hook ring")).toBe("40.00 m");
+    panel.dispose();
+});
+
+test("clearance section reports the school oversail from the current crane layout", () => {
+    // Hand-worked: mast (30,40), max hook radius 40 m.
+    // The school's south edge is y = 78, so the nearest point is (30,78).
+    // Distance 38 m -> jib oversail 40 - 38 = 2.0 m, with no oversail permitted.
+    const dom = createDom();
+    const view = createMockView({ dom } as Partial<IView>);
+    const site: OversailSite = {
+        boundary: {
+            polygon: [
+                { x: -1000, y: -1000 },
+                { x: 1000, y: -1000 },
+                { x: 1000, y: 1000 },
+                { x: -1000, y: 1000 },
+            ],
+            source: "test boundary",
+        },
+        neighbours: [
+            {
+                id: "school",
+                label: "NEIGHBOUR - SCHOOL (G+2)",
+                displayName: "the school",
+                polygon: [
+                    { x: 8, y: 78 },
+                    { x: 52, y: 78 },
+                    { x: 52, y: 96 },
+                    { x: 8, y: 96 },
+                ],
+                rule: "no_oversail",
+            },
+        ],
+        noGoZones: [],
+    };
+    const { panel, content } = showPanel(view, site);
+
+    setInput(content, "Mast X", "30");
+    setInput(content, "Mast Y", "40");
+
+    expect(content.querySelector('[data-check-id="boundary"]')?.getAttribute("data-check-status")).toBe(
+        "pass",
+    );
+    const school = content.querySelector('[data-check-id="neighbour:school"]');
+    expect(school).not.toBeNull();
+    expect(school?.getAttribute("data-check-status")).toBe("fail");
+    expect(school?.textContent).toContain("Jib oversails the school by 2.0 m, no oversail permitted");
+    panel.dispose();
+});
+
+test("clearance section explains when site boundary data is unavailable", () => {
+    const dom = createDom();
+    const view = createMockView({ dom } as Partial<IView>);
+    const { panel, content } = showPanel(view);
+
+    expect(content.textContent).toContain(
+        "Site data unavailable — no boundary polygon supplied. Clearance checks were not performed.",
+    );
+    expect(content.querySelectorAll("[data-check-id]")).toHaveLength(0);
     panel.dispose();
 });

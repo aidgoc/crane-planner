@@ -120,6 +120,68 @@
     text-align: right;
 }
 
+.clearanceStatus {
+    font-weight: 700;
+}
+
+.clearanceRows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.checkRow {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 8px;
+    border-left: 3px solid var(--border-color);
+    background-color: color-mix(in srgb, var(--foreground-color) 4%, transparent);
+}
+
+.checkHead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.checkLabel {
+    font-weight: 600;
+}
+
+.checkStatus {
+    flex-shrink: 0;
+    font-size: 0.78em;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+}
+
+.checkMessage {
+    color: var(--foreground-muted-color);
+    line-height: 1.4;
+}
+
+.statusPass {
+    border-left-color: #2f9e44;
+    color: #2f9e44;
+}
+
+.statusFail {
+    border-left-color: #e03131;
+    color: #e03131;
+}
+
+.statusPermission {
+    border-left-color: #e8590c;
+    color: #e8590c;
+}
+
+.statusUnavailable {
+    color: var(--foreground-muted-color);
+    font-weight: 400;
+}
+
 .errors {
     padding: 8px 10px;
     border: 1px solid #e03131;

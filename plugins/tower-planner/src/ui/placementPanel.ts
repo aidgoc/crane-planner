@@ -15,10 +15,25 @@ import {
     PLANNING_DISCLAIMER,
     validateCraneCatalogue,
 } from "../model/cranePlacement";
+import { evaluateOversailChecks } from "../model/oversailChecks";
+import type { OversailSite, OversailStatus } from "../model/oversailTypes";
+import { SITE_DATA_UNAVAILABLE } from "../model/siteSnapshot";
 import { CraneScene } from "../view/craneScene";
 import style from "./placementPanel.module.css";
 
 const MAST_PICK_RADIUS_PX = 24;
+
+const STATUS_LABELS: Record<OversailStatus, string> = {
+    pass: "PASS",
+    fail: "FAIL",
+    permission_needed: "PERMISSION NEEDED",
+};
+
+const STATUS_CLASSES: Record<OversailStatus, string> = {
+    pass: style.statusPass,
+    fail: style.statusFail,
+    permission_needed: style.statusPermission,
+};
 
 type ResultRow = {
     readonly element: HTMLElement;
@@ -62,6 +77,8 @@ export class TowerCranePlacementPanel {
     private readonly counterJibRadius: HTMLInputElement;
     private readonly errors: HTMLElement;
     private readonly results: ResultRows;
+    private readonly clearanceStatus: HTMLElement;
+    private readonly clearanceRows: HTMLElement;
 
     private catalogue = createDefaultCraneCatalogue();
     private placement: CranePlacement = { ...DEFAULT_TOWER_CRANE_PLACEMENT };
@@ -73,7 +90,10 @@ export class TowerCranePlacementPanel {
     private shown = false;
     private onDisposeCallback: (() => void) | undefined;
 
-    constructor(private view: IView) {
+    constructor(
+        private view: IView,
+        private readonly site?: OversailSite,
+    ) {
         this.scene = new CraneScene(view);
         this.mastX = this.createNumberInput(this.placement.x);
         this.mastY = this.createNumberInput(this.placement.y);
@@ -94,6 +114,8 @@ export class TowerCranePlacementPanel {
             counterTip: this.createResultRow("Counter-jib tip"),
             baseRing: this.createResultRow("Base exclusion"),
         };
+        this.clearanceStatus = div({ className: style.clearanceStatus, textContent: "—" });
+        this.clearanceRows = div({ className: style.clearanceRows });
 
         this.slewSlider.value = String(this.layout.slewAngleDeg);
         this.root = this.createContent();
@@ -177,6 +199,7 @@ export class TowerCranePlacementPanel {
                 this.results.counterTip.element,
                 this.results.baseRing.element,
             ),
+            this.createSection("Clearance checks", this.clearanceStatus, this.clearanceRows),
             this.errors,
         );
     }
@@ -300,10 +323,12 @@ export class TowerCranePlacementPanel {
         this.slewSlider.value = String(this.layout.slewAngleDeg);
         this.scene.update(this.layout);
         this.renderResults(this.layout);
+        this.renderClearance(this.layout);
     }
 
     private clearInvalidState() {
         this.scene.clear();
+        this.clearClearance();
         this.results.mast.value.textContent = "—";
         this.results.slew.value.textContent = "—";
         this.results.minRing.value.textContent = "—";
@@ -328,6 +353,49 @@ export class TowerCranePlacementPanel {
         this.results.jibTip.value.textContent = formatPoint(layout.jibTip);
         this.results.counterTip.value.textContent = formatPoint(layout.counterJibTip);
         this.results.baseRing.value.textContent = `${layout.rings.baseExclusion.radius.toFixed(2)} m`;
+    }
+
+    private renderClearance(layout: CraneLayout) {
+        if (!this.site) {
+            this.clearClearance();
+            this.clearanceStatus.className = `${style.clearanceStatus} ${style.statusUnavailable}`;
+            this.clearanceStatus.textContent = `${SITE_DATA_UNAVAILABLE} — no boundary polygon supplied. Clearance checks were not performed.`;
+            return;
+        }
+
+        const report = evaluateOversailChecks({
+            mast: layout.mast,
+            swingRadiusM: layout.catalogue.maxHookRadius.value,
+            site: this.site,
+        });
+
+        this.clearanceStatus.className = `${style.clearanceStatus} ${STATUS_CLASSES[report.overallStatus]}`;
+        this.clearanceStatus.textContent = `Overall: ${STATUS_LABELS[report.overallStatus]}`;
+        this.clearanceRows.replaceChildren();
+
+        for (const result of report.results) {
+            const row = div({ className: `${style.checkRow} ${STATUS_CLASSES[result.status]}` });
+            row.setAttribute("data-check-id", result.id);
+            row.setAttribute("data-check-status", result.status);
+            row.append(
+                div(
+                    { className: style.checkHead },
+                    span({ className: style.checkLabel, textContent: result.label }),
+                    span({
+                        className: `${style.checkStatus} ${STATUS_CLASSES[result.status]}`,
+                        textContent: STATUS_LABELS[result.status],
+                    }),
+                ),
+                div({ className: style.checkMessage, textContent: result.message }),
+            );
+            this.clearanceRows.append(row);
+        }
+    }
+
+    private clearClearance() {
+        this.clearanceRows.replaceChildren();
+        this.clearanceStatus.className = style.clearanceStatus;
+        this.clearanceStatus.textContent = "—";
     }
 
     private syncMastInputs() {
