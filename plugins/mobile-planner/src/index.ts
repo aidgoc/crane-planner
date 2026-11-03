@@ -43,6 +43,7 @@ const MobilePlannerPlugin: Plugin = {
 
 export * from "./modules/craneModel";
 export * from "./modules/outriggers";
+export * from "./ui/groundBearingPanel";
 export * from "./ui/liftSummary";
 export { KIT };
 export default MobilePlannerPlugin;

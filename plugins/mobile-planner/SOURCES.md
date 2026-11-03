@@ -30,6 +30,10 @@ interpolate or extrapolate values that the manufacturer does not publish.
 | 14.5, 14.5, 14.5, 14.5, 12.1 t | 70.0 m row, radii 12/15/20/30 m | Grove GMK5250L-1 load chart, p. 17 | VERIFIED |
 | User inputs | Total weight W, length spread L, width spread B, eccentricity | Backlog item M3 specification (no invented crane dimensions) | USER INPUT / PARAMETER |
 | Rigid plate statics: R_i = W/4 ± W*e_x/(2L) ± W*e_y/(2B) | Pad reaction equilibrium model | Classical statics equilibrium: sum F_z = W, sum M_x = W*e_y, sum M_y = W*e_x | STANDARD STATICS |
+| Ground bearing pressure p = R / A | Pad bearing pressure (M4) | Standard contact pressure: reaction R (tonnes) divided by pad area A (m²) | STANDARD STATICS |
+| Allowable bearing capacity q_allow | User-entered allowable soil bearing capacity (t/m²) for PASS/FAIL comparison | Backlog item M4 specification: user input, not an invented soil value | USER INPUT / PARAMETER |
+| Standard gravity g = 9.80665 kN/t | Conversion factor t/m² to kPa | BIPM / SI definition of standard gravity | VERIFIED |
+| Tipping: any pad reaction < 0 | Uplift / stability detection (M4) | Classical statics: negative reaction = loss of contact = incipient overturning | STANDARD STATICS |
 
 Blank cells on page 17 remain `null` in the implementation and are not treated as
 fabricated values. The exact chart configuration is full outriggers, 7.8 m track
