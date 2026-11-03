@@ -13,6 +13,7 @@ import {
     boomDirection,
     buildBoomSolid,
     buildBuildingSolid,
+    buildPowerLineSolid,
     checkOneClearance,
     computeSiteClearance,
     isRedFlag,
@@ -271,6 +272,39 @@ describe("Task M6: statusToColour / isRedFlag — BACKLOG M6 red-highlight rule"
 });
 
 // ===========================================================================
+describe("Task M6: buildBuildingSolid & buildPowerLineSolid unit tests", () => {
+    let factory: ShapeFactory;
+    beforeEach(() => {
+        factory = new ShapeFactory();
+    });
+
+    test("buildBuildingSolid rejects polygons with fewer than 3 vertices", () => {
+        expect(() =>
+            buildBuildingSolid(factory, {
+                id: "bad",
+                label: "bad",
+                polygon: [
+                    [0, 0],
+                    [1, 1],
+                ],
+                height_m: 10,
+                clearanceLimitM: 2,
+            }),
+        ).toThrow("polygon must have ≥ 3 vertices");
+    });
+
+    test("buildBuildingSolid creates a valid solid prism", () => {
+        const solid = buildBuildingSolid(factory, TOWER_A);
+        expect(solid).toBeDefined();
+    });
+
+    test("buildPowerLineSolid creates a vertical face shape", () => {
+        const face = buildPowerLineSolid(factory, POWER_LINE);
+        expect(face).toBeDefined();
+    });
+});
+
+// ===========================================================================
 describe("Task M6: checkOneClearance — boom vs Tower A", () => {
     let factory: ShapeFactory;
     beforeEach(() => {
@@ -349,6 +383,25 @@ describe("Task M6: checkOneClearance — boom vs Tower A", () => {
         expect(result.isCollision).toBe(false);
         expect(result.minDistanceM).toBeCloseTo(1.0, 1); // kernel: 1.0 m
         expect(result.status).toBe("WARNING");
+    });
+
+    test("Case 5: Boundary case — distance exactly equal to clearance limit (2.0 m) → SAFE", () => {
+        // Hand calculation:
+        // Pivot x=15.0 m, boom length=8.0 m, radius=0.5 m, slew=0° (east), elevation=0°.
+        // Flat end-disc at x = 15.0 + 8.0 = 23.0 m.
+        // Tower A west face = 25.0 m.
+        // Gap = 25.0 − 23.0 = 2.0 m == clearanceLimitM (2.0 m).
+        // Since distance is not strictly less than limit, status is SAFE.
+        const boom = buildBoomSolid(
+            factory,
+            safePlacement({ pivotM: { x: 15.0, y: 31.0, z: 0 }, boomLengthM: 8.0, boomRadiusM: 0.5 }),
+        );
+        const building = buildBuildingSolid(factory, TOWER_A);
+        const result = checkOneClearance(boom, building, TOWER_A, factory);
+
+        expect(result.isCollision).toBe(false);
+        expect(result.minDistanceM).toBeCloseTo(2.0, 1);
+        expect(result.status).toBe("SAFE");
     });
 });
 
