@@ -41,6 +41,41 @@ test("legacy sample adapter maps only rule-listed neighbours and keeps supply zo
     expect(result.value.powerLine?.indicative).toBe(true);
 });
 
+test("legacy sample adapter exposes building heights for T9 and excludes supply zones", () => {
+    // Hand-worked source values from sample-site.json: Tower A 75 m and the
+    // podium 9 m are separate footprints. The T9 check takes the tallest roof
+    // (75 m), not 75 + 9.
+    const result = adaptLegacySampleSite(sampleSite, rect(0, 0, 90, 72));
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) throw new Error(result.error);
+
+    const buildings = result.value.buildings ?? [];
+    expect(buildings.find((building) => building.id === "tower_a")?.heightM).toBe(75);
+    expect(buildings.find((building) => building.id === "podium")?.heightM).toBe(9);
+    expect(buildings.find((building) => building.id === "tower_b")?.heightM).toBe(45);
+    expect(buildings.map((building) => building.id)).not.toContain("rebar_yard");
+    expect(buildings.map((building) => building.id)).not.toContain("formwork");
+    expect(buildings.map((building) => building.id)).not.toContain("pump");
+});
+
+test("v1 adapter keeps supplied heights and marks missing heights as unavailable", () => {
+    const result = adaptSiteProject({
+        schema_version: "1.0",
+        boundary: { polygon: rect(0, 0, 90, 72) },
+        buildings: {
+            tower_a: { id: "tower_a", label: "TOWER A", polygon: rect(25, 20, 65, 42), height_m: 75 },
+            school: { id: "school", label: "SCHOOL", polygon: rect(8, 78, 52, 96) },
+        },
+        no_oversail: [],
+        oversail_by_permission: [],
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) throw new Error(result.error);
+
+    expect(result.value.buildings?.find((building) => building.id === "tower_a")?.heightM).toBe(75);
+    expect(result.value.buildings?.find((building) => building.id === "school")?.heightM).toBeUndefined();
+});
+
 test("legacy sample adapter refuses to invent a boundary polygon", () => {
     // The legacy sample has plot width/depth but no boundary vertex list. Deriving
     // one would invent geometry, so the adapter must report unavailable site data.

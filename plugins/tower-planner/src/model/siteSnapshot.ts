@@ -9,6 +9,7 @@ import type {
     OversailPowerLine,
     OversailRoad,
     OversailSite,
+    SiteBuilding,
 } from "./oversailTypes";
 
 export const SITE_DATA_UNAVAILABLE = "Site data unavailable";
@@ -17,6 +18,8 @@ interface BuildingLike {
     readonly id?: string;
     readonly label?: string;
     readonly polygon?: unknown;
+    readonly layer?: string;
+    readonly height_m?: unknown;
     readonly isNeighbour?: boolean;
     readonly neighbourRule?: "no_oversail" | "oversail_by_permission";
 }
@@ -165,6 +168,20 @@ function adaptPowerLine(value: unknown): Result<OversailPowerLine | undefined, s
     });
 }
 
+function adaptBuildings(buildings: Record<string, BuildingLike>): SiteBuilding[] {
+    const mapped: SiteBuilding[] = [];
+    for (const [id, building] of Object.entries(buildings)) {
+        if (building.layer === "SUPPLY_ZONE") continue;
+        const label = building.label;
+        mapped.push({
+            id,
+            label: typeof label === "string" && label.trim() ? label : id,
+            heightM: isFiniteNumber(building.height_m) ? building.height_m : undefined,
+        });
+    }
+    return mapped;
+}
+
 function adaptNeighbours(
     buildings: Record<string, BuildingLike>,
     noOversailIds: readonly string[],
@@ -229,6 +246,7 @@ export function adaptSiteProject(project: SiteProjectLike): Result<OversailSite,
         },
         neighbours: neighbours.value,
         noGoZones: noGoZones.value,
+        buildings: adaptBuildings(project.buildings ?? {}),
         road: road.value,
         powerLine: powerLine.value,
     });
@@ -258,6 +276,8 @@ export function adaptLegacySampleSite(
             id,
             label: typeof label === "string" ? label : undefined,
             polygon: read(value, "polygon"),
+            layer: read(value, "layer"),
+            height_m: read(value, "height_m"),
         };
     }
 
@@ -342,6 +362,7 @@ export function adaptLegacySampleSite(
         boundary: { polygon: boundaryPolygon, source: "supplied boundary polygon" },
         neighbours: neighbours.value,
         noGoZones,
+        buildings: adaptBuildings(buildings),
         road,
         powerLine,
     });

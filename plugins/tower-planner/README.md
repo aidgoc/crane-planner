@@ -34,4 +34,16 @@ The check covers the jib/full hook envelope only, not the counter-jib. Supply zo
 
 `src/model/siteSnapshot.ts` adapts the shared v1 site format and the legacy sample file into an `OversailSite`. The legacy sample has no boundary vertex list; the panel then shows `Site data unavailable...` and does not report a boundary result. Boundary geometry is never approximated from plot width/depth.
 
+## T9 height and tie-in checks
+
+`src/model/heightChecks.ts` is a pure TypeScript check with hand-worked tests. Building heights come from the shared site model (`buildings[].heightM`, metres above the same ground datum).
+
+- **Controlling height** — the tallest individual building roof above ground. Heights are **not summed**: the sample's Tower A is 75 m and the podium is a separate 9 m lower roof, so the controlling height is 75 m, not 84 m. This follows BACKLOG T9/S3 (the Tower A solid is 40 x 22 x 75 m "before the podium") and the sample-site README ("hook clear Tower A at 75 m plus clearance").
+- **Required hook height** — controlling building height + hook clearance. With the default INDICATIVE 2 m clearance and Tower A at 75 m, the requirement is **77 m**.
+- **Hook check** — the available hook height must be at least the required hook height; otherwise the check fails and reports the shortfall.
+- **Freestanding check** — if the required hook height exceeds the freestanding height, the result is `TIE-IN REQUIRED`.
+- **Tie-in levels** — INDICATIVE levels above ground, starting at the freestanding limit and repeating every tie-in spacing until the required hook height is covered. For 77 m required, 50 m freestanding and 20 m spacing: 50 m, 70 m. The crane supplier's tie-in schedule governs.
+
+Hook height, hook clearance, freestanding height and tie-in spacing are all shown as `INDICATIVE`; replace them with the supplied crane configuration or the project/standard value and cite the source. Missing or invalid building heights make the height check `UNAVAILABLE` rather than passing silently.
+
 **Planning aid, not a certified lift plan.**

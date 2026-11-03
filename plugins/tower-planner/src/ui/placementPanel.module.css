@@ -177,6 +177,11 @@
     color: #e8590c;
 }
 
+.statusTieIn {
+    border-left-color: #e8590c;
+    color: #e8590c;
+}
+
 .statusUnavailable {
     color: var(--foreground-muted-color);
     font-weight: 400;

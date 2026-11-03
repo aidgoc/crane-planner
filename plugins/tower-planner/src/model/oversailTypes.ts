@@ -42,10 +42,17 @@ export interface OversailBoundary {
     readonly source: string;
 }
 
+export interface SiteBuilding {
+    readonly id: string;
+    readonly label: string;
+    readonly heightM?: number;
+}
+
 export interface OversailSite {
     readonly boundary: OversailBoundary;
     readonly neighbours: readonly OversailNeighbour[];
     readonly noGoZones: readonly OversailNoGoZone[];
+    readonly buildings?: readonly SiteBuilding[];
     readonly road?: OversailRoad;
     readonly powerLine?: OversailPowerLine;
 }

@@ -294,8 +294,99 @@ test("clearance section explains when site boundary data is unavailable", () => 
     const { panel, content } = showPanel(view);
 
     expect(content.textContent).toContain(
-        "Site data unavailable — no boundary polygon supplied. Clearance checks were not performed.",
+        "no boundary polygon supplied. Clearance checks were not performed.",
     );
     expect(content.querySelectorAll("[data-check-id]")).toHaveLength(0);
+    panel.dispose();
+});
+
+function heightSite(): OversailSite {
+    return {
+        boundary: {
+            polygon: [
+                { x: -1000, y: -1000 },
+                { x: 1000, y: -1000 },
+                { x: 1000, y: 1000 },
+                { x: -1000, y: 1000 },
+            ],
+            source: "test boundary",
+        },
+        neighbours: [],
+        noGoZones: [],
+        buildings: [
+            { id: "tower_a", label: "TOWER A  G+24  75.0 m", heightM: 75 },
+            { id: "podium", label: "PODIUM  2 levels  9.0 m", heightM: 9 },
+        ],
+    };
+}
+
+test("height section requires 77 m and lists tie-ins for Tower A 75 m with a 9 m podium", () => {
+    // Hand-worked: Tower A 75 m + INDICATIVE 2 m clearance = 77 m required.
+    // The podium is a separate 9 m roof, not additive, so 84 m/86 m must not appear.
+    // Freestanding 50 m < 77 m -> ties at 50 m and 70 m (20 m INDICATIVE spacing).
+    const dom = createDom();
+    const view = createMockView({ dom } as Partial<IView>);
+    const { panel, content } = showPanel(view, heightSite());
+
+    const hook = content.querySelector('[data-height-id="hook_height"]');
+    expect(hook).not.toBeNull();
+    expect(hook?.getAttribute("data-height-status")).toBe("pass");
+    expect(hook?.textContent).toContain("77.0 m required");
+    expect(hook?.textContent).not.toContain("84.0 m required");
+    expect(hook?.textContent).not.toContain("86.0 m required");
+
+    const freestanding = content.querySelector('[data-height-id="freestanding"]');
+    expect(freestanding).not.toBeNull();
+    expect(freestanding?.getAttribute("data-height-status")).toBe("tie_in_required");
+    expect(freestanding?.textContent).toContain("50.0 m is below the required 77.0 m");
+
+    const tieIn = content.querySelector('[data-height-id="tie_in"]');
+    expect(tieIn).not.toBeNull();
+    expect(tieIn?.getAttribute("data-height-status")).toBe("tie_in_required");
+    expect(tieIn?.textContent).toContain("Tie-in required at 2 level(s): 50.0, 70.0 m above ground");
+    expect(content.textContent).toContain("Overall: TIE-IN REQUIRED");
+    panel.dispose();
+});
+
+test("height section updates live and reports invalid height input without clearing placement", () => {
+    const dom = createDom();
+    const view = createMockView({ dom } as Partial<IView>);
+    const { panel, content } = showPanel(view, heightSite());
+
+    setInput(content, "Hook clearance", "0");
+    expect(content.querySelector('[data-height-id="hook_height"]')?.textContent).toContain("75.0 m required");
+
+    setInput(content, "Freestanding height", "80");
+    expect(content.querySelector('[data-height-id="tie_in"]')?.getAttribute("data-height-status")).toBe(
+        "pass",
+    );
+    expect(content.querySelector('[data-height-id="tie_in"]')?.textContent).toContain(
+        "No tie-in levels required",
+    );
+
+    setInput(content, "Hook clearance", "6");
+    expect(content.querySelector('[data-height-id="hook_height"]')?.getAttribute("data-height-status")).toBe(
+        "fail",
+    );
+    expect(content.querySelector('[data-height-id="hook_height"]')?.textContent).toContain(
+        "Hook height short by 1.0 m",
+    );
+
+    setInput(content, "Tie-in spacing", "0");
+    expect(content.textContent).toContain("Tie-in spacing must be greater than 0 m.");
+    expect(content.querySelectorAll("[data-height-id]")).toHaveLength(0);
+    expect(resultValue(content, "Mast")).toBe("(0.00, 0.00) m");
+    panel.dispose();
+});
+
+test("height section shows unavailable when the site supplies no building heights", () => {
+    const dom = createDom();
+    const view = createMockView({ dom } as Partial<IView>);
+    const { panel, content } = showPanel(view);
+
+    expect(content.textContent).toContain("Building height unavailable");
+    expect(content.textContent).toContain("UNAVAILABLE");
+    expect(content.textContent).toContain("height check was not performed.");
+    expect(content.querySelectorAll("[data-height-id]")).toHaveLength(0);
     panel.dispose();
 });
