@@ -7,8 +7,9 @@ Lead: Ajit Kolhatkar. Reviewed by Tower & Mobile planner teams.
 
 ---
 
-## Capabilities (Check-in 1: S1–S4)
+## Capabilities
 
+### Check-in 1 (S1–S4)
 1. **S1 — DXF Parser & Dynamic Boundary Chaining**:
    - Parses AutoCAD DXF files (ASCII R12–2000+) using `dxf-parser`.
    - Reassembles `SITE_BOUNDARY` segments (`LINE` and `ARC`) by chaining endpoints dynamically into a closed polyline loop without any hardcoded coordinates.
@@ -31,11 +32,32 @@ Lead: Ajit Kolhatkar. Reviewed by Tower & Mobile planner teams.
    - Full save/load round-trip validation.
    - Rejects invalid data and enforces the mandatory planning-aid disclaimer.
 
+### Check-in 2 (S5, S6 & Ribbon Commands)
+5. **S5 — Image Underlay Scale Calibration (`src/imageUnderlay.ts`)**:
+   - Calibrates 2D aerial imagery and plan scans with 2 user clicks on known scale points (reads 40.0 m within 1% error tolerance).
+   - Transforms bi-directionally between image pixel coordinates and site world coordinates.
+
+6. **S6 — Polygon Draw / Edit Engine (`src/polygonEditor.ts`)**:
+   - Interactive vertex-level editing for buildings, roads, power lines, and no-go zones.
+   - Real-time Shoelace area calculation ($10 \times 10\text{ m} = 100\text{ m}^2$) and transactional Undo/Redo stack.
+
+7. **Load Sample Site Command (`src/commands/loadSampleSite.ts`)**:
+   - Registered under the **Manager** ribbon tab as `"Load Sample Site"`.
+   - Instantiates 3D parametric `BuildingBodyNode` solids for Tower A (75m), Tower B (45m), Podium (9m), Site Office (3m), and Neighbours in the active Chili3D document and renders them in the Three.js viewport.
+
+---
+
+## Hazard Clearances & Downstream Application (Review Point 2)
+
+- **Power Line Hazard (`clearance_m`)**: The `clearance_m` property on `PowerLineZone` (default `6.0 m` in the sample site) is a required safety buffer stored in the site model schema.
+- **Downstream Application**: The site model serves as the single source of truth for site obstacle geometry and safety clearance specifications. Physical clearance evaluation is carried out downstream:
+  - **Mobile Crane Planner (M6 / M8)**: Evaluates 3D and 2D boom cylinder / load clearance to the power line corridor and flags safety violations if distance < `clearance_m`.
+  - **Tower Crane Planner (T8)**: Evaluates slew circle oversail vs the power line buffer (`voltage_kv` and `clearance_m`).
+- **Synthetic Test Fixture**: The `6.0 m` value used in unit tests (`test/siteModel.test.ts`) is a synthetic test fixture from `public/sample-site/README.md` (INDICATIVE sample clearance for a 22 kV overhead line), not a certified regulatory standard.
+
 ---
 
 ## Boundary Parser Specification & Known Limitations
-
-The parser is designed for construction site layout drawings with the following specifications and current conventions:
 
 | Entity / Feature | Implementation Status | Notes & Workarounds |
 |:---|:---:|:---|
@@ -52,7 +74,7 @@ The parser is designed for construction site layout drawings with the following 
 
 ```bash
 # Run acceptance test suite
-npx rstest plugins/site-model/test/siteModel.test.ts
+npx rstest plugins/site-model/test/
 
 # Run production build
 npm run build
@@ -60,4 +82,3 @@ npm run build
 # Preview plugin in local dev server (port 8686)
 npm run preview
 ```
-
