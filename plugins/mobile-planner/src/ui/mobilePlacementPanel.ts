@@ -9,6 +9,8 @@
 
 import { type I18nKeys, type IView, PubSub } from "@chili3d/core";
 import { div, input, span } from "@chili3d/element";
+import { MobileCraneBodyNode } from "../body/mobileCraneBody";
+import { BOOM_LENGTHS_M, KIT } from "../modules/craneModel";
 import { PLANNING_DISCLAIMER } from "../modules/outriggers";
 import {
     computePlacement,
@@ -16,7 +18,9 @@ import {
     type MobilePlacementInput,
     type MobilePlacementResult,
     type SiteObstacle,
+    validatePlacementInput,
 } from "../modules/placementState";
+import { SAMPLE_SITE_OBSTACLES } from "../modules/sampleSiteObstacles";
 import style from "./mobilePlacementPanel.module.css";
 
 // ---------------------------------------------------------------------------
@@ -46,12 +50,6 @@ function badge(text: string, status: "pass" | "fail" | "warn"): HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// Available boom lengths from KIT chart
-// ---------------------------------------------------------------------------
-
-const BOOM_LENGTHS_M = [13.3, 23.6, 38, 52.4, 70] as const;
-
-// ---------------------------------------------------------------------------
 // Panel
 // ---------------------------------------------------------------------------
 
@@ -73,7 +71,8 @@ export class MobileCranePlacementPanel {
     private readonly padAreaInput: HTMLInputElement;
     private readonly allowableInput: HTMLInputElement;
 
-    // Result rows
+    // Feedback & Result rows
+    private readonly errorBanner: HTMLElement;
     private readonly rRadius: ResultRow;
     private readonly rCapacity: ResultRow;
     private readonly rUtilisation: ResultRow;
@@ -84,11 +83,13 @@ export class MobileCranePlacementPanel {
     private readonly rPadRR: ResultRow;
     private readonly rStability: ResultRow;
     private readonly rBearing: ResultRow;
-    private readonly rOverall: ResultRow;
     private readonly obstacleContainer: HTMLElement;
+    private readonly rOverall: ResultRow;
+    private readonly reasonsContainer: HTMLElement;
 
     private state: MobilePlacementInput;
-    private obstacles: readonly SiteObstacle[] = [];
+    private obstacles: readonly SiteObstacle[] = SAMPLE_SITE_OBSTACLES;
+    private craneMarkerNode: MobileCraneBodyNode | undefined;
     private disposed = false;
     private shown = false;
     private onDisposeCallback: (() => void) | undefined;
@@ -118,6 +119,10 @@ export class MobileCranePlacementPanel {
         this.padAreaInput = this.numInput(this.state.padAreaM2);
         this.allowableInput = this.numInput(0);
 
+        // Feedback / banners
+        this.errorBanner = div({ className: style.errorBanner });
+        this.errorBanner.style.display = "none";
+
         // Create result rows
         this.rRadius = resultRow("Operating radius");
         this.rCapacity = resultRow("Chart capacity");
@@ -130,10 +135,12 @@ export class MobileCranePlacementPanel {
         this.rStability = resultRow("Stability");
         this.rBearing = resultRow("Ground bearing (worst)");
         this.rOverall = resultRow("Overall verdict");
+        this.reasonsContainer = div({ className: style.reasonList });
         this.obstacleContainer = div({ className: style.section });
 
         this.root = this.buildLayout();
         this.bindInputs();
+        this.initCraneMarkerNode();
     }
 
     /** Set site obstacles and recompute. */
@@ -158,8 +165,8 @@ export class MobileCranePlacementPanel {
             title: "mobile.placement.title" as I18nKeys,
             content: this.root,
             document: this.view.document,
-            width: 400,
-            height: 700,
+            width: 420,
+            height: 720,
             minWidth: 360,
             minHeight: 500,
             onClose: () => this.dispose(),
@@ -172,6 +179,57 @@ export class MobileCranePlacementPanel {
         this.root.remove();
         this.onDisposeCallback?.();
         this.onDisposeCallback = undefined;
+    }
+
+    // -----------------------------------------------------------------------
+    // 3D Crane Marker integration
+    // -----------------------------------------------------------------------
+
+    private initCraneMarkerNode(): void {
+        try {
+            const doc = this.view.document;
+            if (!doc?.modelManager) return;
+
+            let existing: MobileCraneBodyNode | undefined;
+            let current = doc.modelManager.rootNode?.firstChild;
+            while (current) {
+                if (current instanceof MobileCraneBodyNode) {
+                    existing = current;
+                    break;
+                }
+                current = (current as { nextSibling?: typeof current }).nextSibling;
+            }
+
+            if (existing) {
+                this.craneMarkerNode = existing;
+            } else {
+                const node = new MobileCraneBodyNode({
+                    document: doc,
+                    craneCentreXM: this.state.craneCentreXM,
+                    craneCentreYM: this.state.craneCentreYM,
+                    slewAngleDeg: this.state.slewAngleDeg,
+                    boomLengthM: this.state.boomLengthM,
+                    boomAngleDeg: this.state.boomAngleDeg,
+                });
+                doc.modelManager.addNode(node);
+                this.craneMarkerNode = node;
+            }
+        } catch {
+            // Ignore if in test mock environment without full document
+        }
+    }
+
+    private syncCraneMarker(input: MobilePlacementInput): void {
+        if (!this.craneMarkerNode) return;
+        try {
+            this.craneMarkerNode.craneCentreXM = input.craneCentreXM;
+            this.craneMarkerNode.craneCentreYM = input.craneCentreYM;
+            this.craneMarkerNode.slewAngleDeg = input.slewAngleDeg;
+            this.craneMarkerNode.boomLengthM = input.boomLengthM;
+            this.craneMarkerNode.boomAngleDeg = input.boomAngleDeg;
+        } catch {
+            // Safe fallback
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -188,6 +246,8 @@ export class MobileCranePlacementPanel {
                 className: style.note,
                 textContent: `Crane: ${this.getCraneName()}. All default values are INDICATIVE — replace with your site-specific data.`,
             }),
+            // Error banner for invalid inputs
+            this.errorBanner,
             // Position section
             this.section("Position", [
                 this.field("Centre X", this.craneXInput, "m"),
@@ -232,7 +292,7 @@ export class MobileCranePlacementPanel {
             // Results — Obstacles
             this.obstacleContainer,
             // Overall
-            this.section("Verdict", [this.rOverall.el]),
+            this.section("Verdict", [this.rOverall.el, this.reasonsContainer]),
         );
     }
 
@@ -287,11 +347,7 @@ export class MobileCranePlacementPanel {
     }
 
     private getCraneName(): string {
-        try {
-            return `Grove GMK5250L-1 (source: Grove GMK5250L-1 load chart, page 17; VERIFIED)`;
-        } catch {
-            return "Unknown crane";
-        }
+        return `${KIT.name} (source: ${KIT.source.document}; ${KIT.source.status})`;
     }
 
     // -----------------------------------------------------------------------
@@ -323,30 +379,95 @@ export class MobileCranePlacementPanel {
     }
 
     private readInputsAndRefresh(): void {
-        const num = (el: HTMLInputElement, fallback: number): number => {
-            const v = parseFloat(el.value);
-            return Number.isFinite(v) ? v : fallback;
+        const parseOrNull = (el: HTMLInputElement): number | null => {
+            const raw = el.value.trim();
+            if (raw === "") return null;
+            const v = parseFloat(raw);
+            return Number.isFinite(v) ? v : null;
         };
 
-        const allowableRaw = parseFloat(this.allowableInput.value);
+        const x = parseOrNull(this.craneXInput);
+        const y = parseOrNull(this.craneYInput);
+        const slew = parseOrNull(this.slewInput);
+        const boomLength = parseFloat(this.boomLengthSelect.value);
+        const boomAngle = parseOrNull(this.boomAngleInput);
+        const payload = parseOrNull(this.payloadInput);
+        const rigging = parseOrNull(this.riggingInput);
+        const craneWeight = parseOrNull(this.craneWeightInput);
+        const outriggerL = parseOrNull(this.outriggerLInput);
+        const outriggerW = parseOrNull(this.outriggerWInput);
+        const padArea = parseOrNull(this.padAreaInput);
+        const allowableRaw = parseOrNull(this.allowableInput);
 
-        this.state = {
-            craneCentreXM: num(this.craneXInput, 0),
-            craneCentreYM: num(this.craneYInput, 0),
-            slewAngleDeg: num(this.slewInput, 0),
-            boomLengthM: parseFloat(this.boomLengthSelect.value) || 38,
-            boomAngleDeg: num(this.boomAngleInput, 60),
-            payloadT: num(this.payloadInput, 0),
-            riggingT: num(this.riggingInput, 0),
-            craneWeightT: num(this.craneWeightInput, 84),
-            outriggerLengthSpreadM: num(this.outriggerLInput, 7.7),
-            outriggerWidthSpreadM: num(this.outriggerWInput, 7.2),
-            padAreaM2: num(this.padAreaInput, 1),
-            allowableBearingT_M2:
-                Number.isFinite(allowableRaw) && allowableRaw > 0 ? allowableRaw : undefined,
+        if (
+            x === null ||
+            y === null ||
+            slew === null ||
+            !Number.isFinite(boomLength) ||
+            boomAngle === null ||
+            payload === null ||
+            rigging === null ||
+            craneWeight === null ||
+            outriggerL === null ||
+            outriggerW === null ||
+            padArea === null
+        ) {
+            this.renderInvalidInput("Please enter valid numbers in all fields");
+            return;
+        }
+
+        const candidateInput: MobilePlacementInput = {
+            craneCentreXM: x,
+            craneCentreYM: y,
+            slewAngleDeg: slew,
+            boomLengthM: boomLength,
+            boomAngleDeg: boomAngle,
+            payloadT: payload,
+            riggingT: rigging,
+            craneWeightT: craneWeight,
+            outriggerLengthSpreadM: outriggerL,
+            outriggerWidthSpreadM: outriggerW,
+            padAreaM2: padArea,
+            allowableBearingT_M2: allowableRaw !== null && allowableRaw > 0 ? allowableRaw : undefined,
         };
 
+        const errors = validatePlacementInput(candidateInput);
+        if (errors.length > 0) {
+            this.renderInvalidInput(errors[0]);
+            return;
+        }
+
+        this.state = candidateInput;
+        this.errorBanner.style.display = "none";
+        this.syncCraneMarker(candidateInput);
         this.refresh();
+    }
+
+    private renderInvalidInput(message: string): void {
+        this.errorBanner.textContent = `Invalid input: ${message}`;
+        this.errorBanner.style.display = "block";
+
+        // Blank out outputs so no stale values are shown
+        this.rRadius.val.textContent = "—";
+        this.rCapacity.val.textContent = "—";
+        this.rUtilisation.val.textContent = "—";
+        this.rCapVerdict.val.textContent = "—";
+        this.rPadFL.val.textContent = "—";
+        this.rPadFR.val.textContent = "—";
+        this.rPadRL.val.textContent = "—";
+        this.rPadRR.val.textContent = "—";
+        this.rStability.val.textContent = "—";
+        this.rBearing.val.textContent = "—";
+
+        this.obstacleContainer.textContent = "";
+        this.obstacleContainer.appendChild(
+            div({ className: style.sectionTitle, textContent: "Obstacle Clearances" }),
+        );
+        this.obstacleContainer.appendChild(div({ className: style.note, textContent: "—" }));
+
+        this.rOverall.val.textContent = "";
+        this.rOverall.val.appendChild(badge("INVALID INPUT", "warn"));
+        this.reasonsContainer.textContent = "";
     }
 
     // -----------------------------------------------------------------------
@@ -356,11 +477,17 @@ export class MobileCranePlacementPanel {
     private refresh(): void {
         if (this.disposed) return;
 
-        const r = computePlacement(this.state, this.obstacles);
-        this.renderResults(r);
+        try {
+            const r = computePlacement(this.state, this.obstacles);
+            this.renderResults(r);
+        } catch (err) {
+            this.renderInvalidInput(err instanceof Error ? err.message : "Calculation error");
+        }
     }
 
     private renderResults(r: MobilePlacementResult): void {
+        this.errorBanner.style.display = "none";
+
         // Capacity
         this.rRadius.val.textContent = `${fmt(r.operatingRadiusM)} m`;
         this.rCapacity.val.textContent = r.capacityT !== null ? `${fmt(r.capacityT, 1)} t` : "Outside chart";
@@ -385,31 +512,45 @@ export class MobileCranePlacementPanel {
             badge(r.padReactions.isStable ? "STABLE" : "TIPPING", r.padReactions.isStable ? "pass" : "fail"),
         );
 
-        // Bearing
-        this.rBearing.val.textContent = `${fmt(r.worstPadBearing.pressureKPa, 1)} kPa`;
-        if (r.worstPadBearing.status !== "NOT_CHECKED") {
-            this.rBearing.val.appendChild(document.createTextNode(" "));
+        // Ground Bearing
+        this.rBearing.val.textContent = `${fmt(r.worstPadBearing.pressureKPa, 1)} kPa `;
+        if (r.bearingStatus === "NOT_CHECKED") {
+            this.rBearing.val.appendChild(badge("NOT CHECKED", "warn"));
+        } else {
             this.rBearing.val.appendChild(
-                badge(r.worstPadBearing.status, r.worstPadBearing.status === "PASS" ? "pass" : "fail"),
+                badge(r.bearingStatus, r.bearingStatus === "PASS" ? "pass" : "fail"),
             );
         }
 
         // Obstacles
         this.obstacleContainer.textContent = "";
-        if (r.obstacleClearances.length > 0) {
+        this.obstacleContainer.appendChild(
+            div({ className: style.sectionTitle, textContent: "Obstacle Clearances (Sample Site)" }),
+        );
+        if (r.obstacleClearances.length === 0) {
             this.obstacleContainer.appendChild(
-                div({ className: style.sectionTitle, textContent: "Obstacle Clearances" }),
+                div({ className: style.note, textContent: "No site obstacles checked." }),
             );
+        } else {
             for (const c of r.obstacleClearances) {
                 const row = resultRow(c.label);
-                row.val.textContent = `${fmt(c.marginM)} m `;
+                const prefix = c.isCollision ? "COLLISION (0 m) " : `${fmt(c.marginM)} m margin `;
+                row.val.textContent = prefix;
                 row.val.appendChild(badge(c.status, c.status === "PASS" ? "pass" : "fail"));
                 this.obstacleContainer.appendChild(row.el);
             }
         }
 
-        // Overall
+        // Overall Safety Verdict
         this.rOverall.val.textContent = "";
-        this.rOverall.val.appendChild(badge(r.allPass ? "ALL PASS" : "FAIL", r.allPass ? "pass" : "fail"));
+        const overallCls =
+            r.overallVerdict === "ALL PASS" ? "pass" : r.overallVerdict === "FAIL" ? "fail" : "warn";
+        this.rOverall.val.appendChild(badge(r.overallVerdict, overallCls));
+
+        // Incomplete reasons
+        this.reasonsContainer.textContent = "";
+        if (r.incompleteReasons.length > 0) {
+            this.reasonsContainer.textContent = `Reasons: ${r.incompleteReasons.join(" • ")}`;
+        }
     }
 }

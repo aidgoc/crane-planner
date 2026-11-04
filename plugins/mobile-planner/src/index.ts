@@ -6,7 +6,14 @@ import { PlaceMobileCraneCommand } from "./commands/placeCrane";
 import { ShowCraneCommand } from "./commands/showCrane";
 import { KIT } from "./modules/craneModel";
 
+export * from "./body/mobileCraneBody";
 export * from "./clearance/distance";
+export * from "./modules/craneModel";
+export * from "./modules/outriggers";
+export * from "./modules/placementState";
+export * from "./modules/sampleSiteObstacles";
+export * from "./ui/liftSummary";
+export * from "./ui/mobilePlacementPanel";
 
 const MobilePlannerPlugin: Plugin = {
     commands: [ShowCraneCommand, PlaceMobileCraneCommand],
@@ -50,14 +57,11 @@ const MobilePlannerPlugin: Plugin = {
                     "Place mobile crane on the site. Capacity, outrigger reactions and obstacle clearance update live.",
                 "mobile.placement.title": "Mobile Crane Placement",
                 "mobile.crane.loaded": `${KIT.name} loaded. Planning aid, not a certified lift plan.`,
+                "mobile.crane.marker": "Mobile Crane",
             },
         } as unknown as Locale,
     ],
 };
 
-export * from "./modules/craneModel";
-export * from "./modules/outriggers";
-export * from "./modules/placementState";
-export * from "./ui/liftSummary";
 export { KIT };
 export default MobilePlannerPlugin;

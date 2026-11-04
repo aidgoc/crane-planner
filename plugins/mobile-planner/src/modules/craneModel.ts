@@ -12,8 +12,10 @@ export type ChartCell = {
     readonly capacityT: number;
 };
 
-const boomLengthsM = [13.3, 23.6, 38, 52.4, 70] as const;
-const radiiM = [5, 8, 10, 11, 12, 15, 20, 30] as const;
+export const BOOM_LENGTHS_M = [13.3, 23.6, 38, 52.4, 70] as const;
+const boomLengthsM = BOOM_LENGTHS_M;
+export const CHART_RADII_M = [5, 8, 10, 11, 12, 15, 20, 30] as const;
+const radiiM = CHART_RADII_M;
 const capacityT = [
     [121, 84.5, 64.5, null, null, null, null, null],
     [111, 83.5, 68, 62, 57, 45, 27, null],

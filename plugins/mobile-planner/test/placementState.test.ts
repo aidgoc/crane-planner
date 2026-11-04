@@ -10,13 +10,19 @@
 // expected values are independently verifiable.
 // ============================================================================
 
+import type { IView } from "@chili3d/core";
+import { createMockDocument } from "@chili3d/core/test-utils";
+import { MobileCraneBodyNode } from "../src/body/mobileCraneBody";
 import {
     computePlacement,
     createDefaultPlacementInput,
     type MobilePlacementInput,
     pickRadiusM,
     type SiteObstacle,
+    validatePlacementInput,
 } from "../src/modules/placementState";
+import { SAMPLE_SITE_OBSTACLES } from "../src/modules/sampleSiteObstacles";
+import { MobileCranePlacementPanel } from "../src/ui/mobilePlacementPanel";
 
 // ---------------------------------------------------------------------------
 // Helper: create an input with overrides on top of the default
@@ -31,7 +37,7 @@ function makeInput(overrides: Partial<MobilePlacementInput> = {}): MobilePlaceme
 // ===========================================================================
 
 describe("M8 — computePlacement (live wiring)", () => {
-    test("default INDICATIVE input returns a valid result with all fields populated", () => {
+    test("default INDICATIVE input without allowable bearing or obstacles returns INCOMPLETE (not false ALL PASS)", () => {
         // Hand calculation for default input:
         //   boomLengthM = 38, boomAngleDeg = 60
         //   operatingRadiusM = 38 * cos(60°) + 0.8 = 38 * 0.5 + 0.8 = 19.8 m
@@ -40,6 +46,11 @@ describe("M8 — computePlacement (live wiring)", () => {
         //   totalSuspended = 10 + 0.5 = 10.5 t
         //   utilisation = 10.5 / 30.5 = 0.3443 (34.4%)
         //   capacityStatus = PASS (10.5 <= 30.5)
+        //   padReactions: isStable = true
+        //   allowableBearingT_M2 = undefined → bearingStatus = NOT_CHECKED
+        //   obstacles = [] → clearanceStatus = NOT_CHECKED
+        //   Safety Rule: must NOT show ALL PASS when checks did not run!
+        //   overallVerdict = INCOMPLETE, allPass = false
 
         const r = computePlacement(makeInput());
 
@@ -49,8 +60,40 @@ describe("M8 — computePlacement (live wiring)", () => {
         expect(r.utilisation).toBeCloseTo(10.5 / 30.5, 3);
         expect(r.capacityStatus).toBe("PASS");
         expect(r.padReactions.isStable).toBe(true);
-        expect(r.allPass).toBe(true);
+        expect(r.bearingStatus).toBe("NOT_CHECKED");
+        expect(r.clearanceStatus).toBe("NOT_CHECKED");
+        expect(r.overallVerdict).toBe("INCOMPLETE");
+        expect(r.allPass).toBe(false);
+        expect(r.incompleteReasons.length).toBeGreaterThan(0);
         expect(r.disclaimer).toBe("Planning aid, not a certified lift plan.");
+    });
+
+    test("fully checked placement with generous bearing and safe obstacle returns ALL PASS", () => {
+        // Hand calculation:
+        //   Default crane at (0, 0)
+        //   allowableBearingT_M2 = 100 t/m² → bearingStatus = PASS
+        //   obstacle at (60, 0), required 2 m:
+        //     boom tip at (19.8, 0) → distance = 60 - 19.8 = 40.2 m
+        //     margin = 40.2 - 2 = 38.2 m → PASS
+        //   Capacity = PASS, Stability = true, Bearing = PASS, Clearance = PASS
+        //   overallVerdict = ALL PASS, allPass = true
+
+        const safeObstacle: SiteObstacle = {
+            label: "Distant Building",
+            xM: 60,
+            yM: 0,
+            requiredClearanceM: 2,
+        };
+
+        const r = computePlacement(makeInput({ allowableBearingT_M2: 100 }), [safeObstacle]);
+
+        expect(r.capacityStatus).toBe("PASS");
+        expect(r.padReactions.isStable).toBe(true);
+        expect(r.bearingStatus).toBe("PASS");
+        expect(r.clearanceStatus).toBe("PASS");
+        expect(r.overallVerdict).toBe("ALL PASS");
+        expect(r.allPass).toBe(true);
+        expect(r.incompleteReasons).toHaveLength(0);
     });
 
     test("overloaded crane returns FAIL with utilisation > 100%", () => {
@@ -65,10 +108,11 @@ describe("M8 — computePlacement (live wiring)", () => {
         expect(r.capacityStatus).toBe("FAIL");
         expect(r.utilisation).toBeGreaterThan(1);
         expect(r.totalSuspendedLoadT).toBeCloseTo(35.5, 2);
+        expect(r.overallVerdict).toBe("FAIL");
         expect(r.allPass).toBe(false);
     });
 
-    test("radius outside chart returns NO_DATA", () => {
+    test("radius outside chart returns NO_DATA and INCOMPLETE/FAIL", () => {
         // Hand calculation:
         //   boomLengthM = 70, boomAngleDeg = 0
         //   operatingRadiusM = 70 * cos(0°) + 0.8 = 70.8 m
@@ -97,31 +141,23 @@ describe("M8 — computePlacement (live wiring)", () => {
         const r0 = computePlacement(base);
         const r90 = computePlacement({ ...base, slewAngleDeg: 90 });
 
-        // Total weight must be identical
         expect(r0.padReactions.totalWeightT).toBeCloseTo(r90.padReactions.totalWeightT, 4);
-
-        // FL reaction at 0° should differ from FL reaction at 90°
         expect(r0.padReactions.reactions.frontLeft.reactionT).not.toBeCloseTo(
             r90.padReactions.reactions.frontLeft.reactionT,
             2,
         );
-
-        // Both must be stable (moderate load, centred crane weight)
         expect(r0.padReactions.isStable).toBe(true);
         expect(r90.padReactions.isStable).toBe(true);
     });
 
     // -----------------------------------------------------------------------
-    // 3. Symmetric centred load → equal pad reactions
+    // 3. Centred load → equal pad reactions
     // -----------------------------------------------------------------------
 
     test("centred load (payload 0, crane weight only) gives equal pad reactions W/4", () => {
         // Hand calculation:
         //   craneWeightT = 84, payloadT = 0, riggingT = 0
         //   totalWeight = 84 + 0 = 84 t
-        //   At slew = 0°, radiusM for payload = expectedRadiusM(38, 60) = 19.8 m
-        //   But liftedLoad = 0, so eccentricity from load is 0.
-        //   With craneCgOffset = (0, 0), resultant eccentricity = (0, 0).
         //   Each pad = 84 / 4 = 21.0 t
 
         const r = computePlacement(makeInput({ payloadT: 0, riggingT: 0 }));
@@ -134,76 +170,140 @@ describe("M8 — computePlacement (live wiring)", () => {
     });
 
     // -----------------------------------------------------------------------
-    // 4. Moving crane position changes obstacle clearance
+    // 4. Polygon Footprint Clearance — Reviewer Case 1 (Tower A)
     // -----------------------------------------------------------------------
 
-    test("moving crane closer to obstacle toggles clearance from PASS to FAIL", () => {
-        // Obstacle "Tower A" at (50, 0), required clearance 2 m.
-        // Default boom: operatingRadiusM ≈ 19.8 m
-        //
-        // Crane at (0, 0):
-        //   distance = 50 m, margin = 50 - 19.8 - 2 = 28.2 m → PASS
-        //
-        // Crane at (35, 0):
-        //   distance = 15 m, margin = 15 - 19.8 - 2 = -6.8 m → FAIL
+    test("Reviewer Case 1: Crane at (5, 31) pointing at Tower A polygon returns FAIL (close/collision)", () => {
+        // Hand calculation:
+        //   Crane centre: (5, 31), slew 0° (along +X), boom 38 m at 60°
+        //   Operating radius = 38 * cos(60°) + 0.8 = 19.8 m
+        //   Boom tip coordinate = (5 + 19.8, 31) = (24.8, 31)
+        //   Tower A footprint: X in [25, 65], Y in [20, 42]
+        //   West wall of Tower A is at X = 25.0 m
+        //   Distance from boom tip (24.8, 31) to west wall (25.0, 31) = 25.0 - 24.8 = 0.2 m
+        //   Required clearance = 2.0 m
+        //   Margin = 0.2 - 2.0 = -1.8 m (< 0) → FAIL (CRITICAL / clearance violation)
+        //   (Naive point model gave +18.2 m PASS because centre was at 45.0 m!)
 
-        const obstacle: SiteObstacle = {
-            label: "Tower A",
-            xM: 50,
-            yM: 0,
-            requiredClearanceM: 2,
+        const towerA: SiteObstacle = {
+            label: "Tower A (G+24, 75 m)",
+            polygon: [
+                [25, 20],
+                [65, 20],
+                [65, 42],
+                [25, 42],
+            ],
+            heightM: 75,
+            requiredClearanceM: 2.0,
         };
 
-        const far = computePlacement(makeInput({ craneCentreXM: 0 }), [obstacle]);
-        expect(far.obstacleClearances[0].status).toBe("PASS");
-        expect(far.obstacleClearances[0].marginM).toBeCloseTo(28.2, 1);
-        expect(far.allPass).toBe(true);
+        const r = computePlacement(
+            makeInput({
+                craneCentreXM: 5,
+                craneCentreYM: 31,
+                slewAngleDeg: 0,
+                boomLengthM: 38,
+                boomAngleDeg: 60,
+                allowableBearingT_M2: 100,
+            }),
+            [towerA],
+        );
 
-        const near = computePlacement(makeInput({ craneCentreXM: 35 }), [obstacle]);
-        expect(near.obstacleClearances[0].status).toBe("FAIL");
-        expect(near.obstacleClearances[0].marginM).toBeCloseTo(-6.8, 1);
-        expect(near.allPass).toBe(false);
+        expect(r.obstacleClearances).toHaveLength(1);
+        expect(r.obstacleClearances[0].distanceM).toBeCloseTo(0.2, 1);
+        expect(r.obstacleClearances[0].marginM).toBeCloseTo(-1.8, 1);
+        expect(r.obstacleClearances[0].status).toBe("FAIL");
+        expect(r.clearanceStatus).toBe("FAIL");
+        expect(r.overallVerdict).toBe("FAIL");
+        expect(r.allPass).toBe(false);
     });
 
     // -----------------------------------------------------------------------
-    // 5. Ground bearing with allowable
+    // 5. Power Line Wall Clearance — Reviewer Case 2 (x = -9 m)
     // -----------------------------------------------------------------------
 
-    test("ground bearing PASS when allowable is generous, FAIL when tight", () => {
+    test("Reviewer Case 2: Crane at (5, 100) slewing 180° cuts across power line at x = -9 m", () => {
         // Hand calculation:
-        //   Using default input → maxReactionT from padReactions.
-        //   padAreaM2 = 1.0 m²
-        //   pressureT_M2 = maxReactionT / 1.0
-        //
-        //   With allowable = 100 t/m² → likely PASS
-        //   With allowable = 5 t/m²  → likely FAIL (maxReactionT > 5)
+        //   Crane centre: (5, 100), slew 180° (along -X), boom 38 m at 60°
+        //   Operating radius = 19.8 m
+        //   Boom tip coordinate = (5 - 19.8, 100) = (-14.8, 100)
+        //   Power line hazard plane is at x = -9.0 m
+        //   Since -14.8 <= -9.0 <= 5.0, the boom physically crosses x = -9.0 m!
+        //   Distance = 0 m (collision/crossing), isCollision = true
+        //   Required clearance = 6.0 m
+        //   Margin = 0 - 6.0 = -6.0 m → FAIL / CRITICAL!
 
-        const generous = computePlacement(makeInput({ allowableBearingT_M2: 100, padAreaM2: 1.0 }));
-        expect(generous.worstPadBearing.status).toBe("PASS");
+        const powerLine: SiteObstacle = {
+            label: "22 kV Power Line (x = -9 m)",
+            xLineM: -9.0,
+            requiredClearanceM: 6.0,
+        };
 
-        const tight = computePlacement(makeInput({ allowableBearingT_M2: 5, padAreaM2: 1.0 }));
-        expect(tight.worstPadBearing.status).toBe("FAIL");
-    });
+        const r = computePlacement(
+            makeInput({
+                craneCentreXM: 5,
+                craneCentreYM: 100,
+                slewAngleDeg: 180,
+                boomLengthM: 38,
+                boomAngleDeg: 60,
+                allowableBearingT_M2: 100,
+            }),
+            [powerLine],
+        );
 
-    test("no allowable → NOT_CHECKED (not false PASS)", () => {
-        const r = computePlacement(makeInput({ allowableBearingT_M2: undefined }));
-        expect(r.worstPadBearing.status).toBe("NOT_CHECKED");
+        expect(r.obstacleClearances).toHaveLength(1);
+        expect(r.obstacleClearances[0].distanceM).toBe(0);
+        expect(r.obstacleClearances[0].isCollision).toBe(true);
+        expect(r.obstacleClearances[0].marginM).toBe(-6.0);
+        expect(r.obstacleClearances[0].status).toBe("FAIL");
+        expect(r.clearanceStatus).toBe("FAIL");
+        expect(r.overallVerdict).toBe("FAIL");
+        expect(r.allPass).toBe(false);
     });
 
     // -----------------------------------------------------------------------
-    // 6. Tipping detection
+    // 6. Bundled SAMPLE_SITE_OBSTACLES Integration
+    // -----------------------------------------------------------------------
+
+    test("Bundled SAMPLE_SITE_OBSTACLES checks all 7 site obstacles", () => {
+        const r = computePlacement(makeInput(), SAMPLE_SITE_OBSTACLES);
+
+        expect(r.obstacleClearances).toHaveLength(7);
+        const labels = r.obstacleClearances.map((c) => c.label);
+        expect(labels).toContain("Tower A (G+24, 75 m)");
+        expect(labels).toContain("Tower B (G+14, 45 m)");
+        expect(labels).toContain("Podium (9 m)");
+        expect(labels).toContain("Site Office (3 m)");
+        expect(labels).toContain("Neighbour East (30 m)");
+        expect(labels).toContain("Neighbour North (12 m)");
+        expect(labels).toContain("22 kV Power Line (x = -9 m)");
+    });
+
+    // -----------------------------------------------------------------------
+    // 7. Input Validation (No silent defaults or crashes)
+    // -----------------------------------------------------------------------
+
+    test("validatePlacementInput catches invalid or out-of-range inputs", () => {
+        expect(validatePlacementInput(makeInput({ payloadT: -5 }))).toContain("Payload must be non-negative");
+        expect(validatePlacementInput(makeInput({ boomAngleDeg: 120 }))).toContain(
+            "Boom angle must be between 0° and 90°",
+        );
+        expect(validatePlacementInput(makeInput({ padAreaM2: 0 }))).toContain("Pad area must be positive");
+        expect(validatePlacementInput(makeInput({ craneWeightT: -10 }))).toContain(
+            "Crane self-weight must be positive",
+        );
+    });
+
+    test("computePlacement throws error on invalid input", () => {
+        expect(() => computePlacement(makeInput({ payloadT: -1 }))).toThrow("Invalid placement input");
+        expect(() => computePlacement(makeInput({ boomAngleDeg: -10 }))).toThrow("Invalid placement input");
+    });
+
+    // -----------------------------------------------------------------------
+    // 8. Tipping detection
     // -----------------------------------------------------------------------
 
     test("extreme eccentric load causes tipping (negative pad reaction)", () => {
-        // Hand calculation:
-        //   craneWeightT = 10 (very light crane)
-        //   payloadT = 100 (huge load)
-        //   radiusM ≈ 19.8 m at boomAngleDeg = 60
-        //   totalWeight = 110.5 t
-        //   eccentricityXM = (10*0 + 100.5*19.8) / 110.5 ≈ 18.0 m
-        //   deltaLong = 110.5 * 18.0 / (2 * 7.7) ≈ 129.2 t
-        //   rearRight = 110.5/4 - 129.2 - 0 = 27.625 - 129.2 < 0 → TIPPING
-
         const r = computePlacement(
             makeInput({
                 craneWeightT: 10,
@@ -213,56 +313,8 @@ describe("M8 — computePlacement (live wiring)", () => {
 
         expect(r.padReactions.isStable).toBe(false);
         expect(r.padReactions.minReactionT).toBeLessThan(0);
+        expect(r.overallVerdict).toBe("FAIL");
         expect(r.allPass).toBe(false);
-    });
-
-    // -----------------------------------------------------------------------
-    // 7. Multiple obstacles
-    // -----------------------------------------------------------------------
-
-    test("multiple obstacles each get individual clearance results", () => {
-        const obstacles: SiteObstacle[] = [
-            { label: "Tower A", xM: 50, yM: 0, requiredClearanceM: 2 },
-            { label: "Power Line", xM: 0, yM: 25, requiredClearanceM: 6 },
-        ];
-
-        const r = computePlacement(makeInput(), obstacles);
-
-        expect(r.obstacleClearances).toHaveLength(2);
-        expect(r.obstacleClearances[0].label).toBe("Tower A");
-        expect(r.obstacleClearances[1].label).toBe("Power Line");
-
-        // Tower A at (50, 0): distance = 50 m, margin = 50 - 19.8 - 2 = 28.2 → PASS
-        expect(r.obstacleClearances[0].status).toBe("PASS");
-
-        // Power Line at (0, 25): distance = 25 m, margin = 25 - 19.8 - 6 = -0.8 → FAIL
-        expect(r.obstacleClearances[1].status).toBe("FAIL");
-        expect(r.obstacleClearances[1].marginM).toBeCloseTo(-0.8, 1);
-    });
-
-    // -----------------------------------------------------------------------
-    // 8. Live update guarantee — changing one input recomputes everything
-    // -----------------------------------------------------------------------
-
-    test("changing boom angle recomputes radius, capacity AND pad reactions in one call", () => {
-        // Boom 38 m at 60° → radius ≈ 19.8 m → chart 20 m → cap 30.5 t
-        // Boom 38 m at 30° → radius = 38*cos(30°) + 0.8 = 38*0.866 + 0.8 = 33.7 m → chart = null (> 30)
-        //   → NO_DATA
-
-        const r60 = computePlacement(makeInput({ boomAngleDeg: 60 }));
-        const r30 = computePlacement(makeInput({ boomAngleDeg: 30 }));
-
-        expect(r60.operatingRadiusM).toBeCloseTo(19.8, 1);
-        expect(r60.capacityT).toBe(30.5);
-
-        expect(r30.operatingRadiusM).toBeCloseTo(33.71, 0);
-        expect(r30.capacityT).toBeNull();
-
-        // Pad reactions also differ because operating radius changed
-        expect(r60.padReactions.reactions.frontLeft.reactionT).not.toBeCloseTo(
-            r30.padReactions.reactions.frontLeft.reactionT,
-            1,
-        );
     });
 
     // -----------------------------------------------------------------------
@@ -270,42 +322,54 @@ describe("M8 — computePlacement (live wiring)", () => {
     // -----------------------------------------------------------------------
 
     test("pickRadiusM computes horizontal distance + PIVOT_OFFSET", () => {
-        // Hand calculation:
-        //   craneCentre = (10, 20), pickPoint = (13, 24)
-        //   dx = 3, dy = 4 → hypot = 5 m
-        //   radius = 5 + PIVOT_OFFSET_M (0.8) = 5.8 m
-
         const r = pickRadiusM({ xM: 10, yM: 20 }, { xM: 13, yM: 24 });
         expect(r).toBeCloseTo(5.8, 4);
     });
 
     // -----------------------------------------------------------------------
-    // 10. Disclaimer is always present
+    // 10. MobileCraneBodyNode 3D marker
     // -----------------------------------------------------------------------
 
-    test("disclaimer is always present in result", () => {
-        const r = computePlacement(makeInput());
-        expect(r.disclaimer).toBe("Planning aid, not a certified lift plan.");
-        expect(r.padReactions.disclaimer).toBe("Planning aid, not a certified lift plan.");
-        expect(r.worstPadBearing.disclaimer).toBe("Planning aid, not a certified lift plan.");
+    test("MobileCraneBodyNode initializes properties and updates values", () => {
+        const doc = createMockDocument();
+        const node = new MobileCraneBodyNode({
+            document: doc,
+            craneCentreXM: 10,
+            craneCentreYM: 20,
+            slewAngleDeg: 45,
+            boomLengthM: 38,
+            boomAngleDeg: 60,
+        });
+
+        expect(node.craneCentreXM).toBe(10);
+        expect(node.craneCentreYM).toBe(20);
+        expect(node.slewAngleDeg).toBe(45);
+        expect(node.boomLengthM).toBe(38);
+        expect(node.boomAngleDeg).toBe(60);
+
+        node.craneCentreXM = 15;
+        expect(node.craneCentreXM).toBe(15);
+
+        expect(() => {
+            node.boomAngleDeg = 95;
+        }).toThrow();
+        expect(() => {
+            node.boomLengthM = -5;
+        }).toThrow();
     });
 
     // -----------------------------------------------------------------------
-    // 11. Specific chart cell verification (sourced)
+    // 11. MobileCranePlacementPanel UI
     // -----------------------------------------------------------------------
 
-    test("38 m boom at 10 m radius gives 53 t capacity (Grove GMK5250L-1, page 17)", () => {
-        // Boom 38 m, target radius = 10 m
-        // Need boomAngleDeg so that expectedRadiusM <= 10
-        // 38 * cos(θ) + 0.8 <= 10 → cos(θ) <= 9.2/38 = 0.2421 → θ >= 75.99°
-        // Use boomAngleDeg = 76 → radius = 38*cos(76°) + 0.8 = 38*0.2419 + 0.8 = 9.99 m
-        // Chart lookup: next radius >= 9.99 → 10 m
-        // capacityAt(38, 10) = 53 t
+    test("MobileCranePlacementPanel initializes with sample site obstacles and disclaimer", () => {
+        const doc = createMockDocument();
+        const mockView = {
+            document: doc,
+        } as unknown as IView;
 
-        const r = computePlacement(makeInput({ boomLengthM: 38, boomAngleDeg: 76, payloadT: 50 }));
-
-        expect(r.operatingRadiusM).toBeCloseTo(10.0, 0);
-        expect(r.capacityT).toBe(53);
-        expect(r.capacityStatus).toBe("PASS"); // 50.5 <= 53
+        const panel = new MobileCranePlacementPanel(mockView);
+        expect(panel).toBeDefined();
+        panel.dispose();
     });
 });

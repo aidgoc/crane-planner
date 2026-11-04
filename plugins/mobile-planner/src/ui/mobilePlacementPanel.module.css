@@ -141,3 +141,18 @@
     font-weight: 700;
     letter-spacing: 0.04em;
 }
+
+.errorBanner {
+    padding: 6px 8px;
+    border: 1px solid #e03131;
+    border-radius: 6px;
+    background-color: color-mix(in srgb, #e03131 10%, transparent);
+    color: #e03131;
+    font-size: 0.9em;
+}
+
+.reasonList {
+    color: var(--foreground-muted-color);
+    font-size: 0.85em;
+    line-height: 1.3;
+}

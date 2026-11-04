@@ -7,7 +7,14 @@
 // Owner: Ajit
 // ============================================================================
 
-import { type CranePointM, capacityAt, expectedRadiusM, radiusFromPoint } from "./craneModel";
+import {
+    CHART_RADII_M,
+    type CranePointM,
+    capacityAt,
+    expectedRadiusM,
+    KIT,
+    radiusFromPoint,
+} from "./craneModel";
 import {
     calculateGroundBearing,
     calculatePadReactionsFromLift,
@@ -48,32 +55,41 @@ export interface MobilePlacementInput {
     readonly allowableBearingT_M2?: number;
 }
 
-/** A single obstacle on the site for clearance checking. */
+/** A single obstacle on the site for clearance checking. Supports polygons, hazard lines, and points. */
 export interface SiteObstacle {
     /** Human-readable label (e.g. "Tower A", "22 kV power line"). */
     readonly label: string;
-    /** Obstacle centre X in metres. */
-    readonly xM: number;
-    /** Obstacle centre Y in metres. */
-    readonly yM: number;
     /** Required minimum clearance in metres (INDICATIVE unless sourced). */
     readonly requiredClearanceM: number;
+    /** 2D polygonal footprint in metres [[x0, y0], [x1, y1], ...]. */
+    readonly polygon?: readonly (readonly [number, number])[];
+    /** Obstacle height in metres (for 3D building check). */
+    readonly heightM?: number;
+    /** Vertical hazard wall at X coordinate in metres (e.g. power line). */
+    readonly xLineM?: number;
+    /** Single obstacle centre X in metres (legacy / point obstacles). */
+    readonly xM?: number;
+    /** Single obstacle centre Y in metres (legacy / point obstacles). */
+    readonly yM?: number;
 }
 
 /** Result of a single obstacle clearance check. */
 export interface ObstacleClearanceResult {
     readonly label: string;
-    /** 2D horizontal distance from crane centre to obstacle centre in metres. */
+    /** 2D horizontal distance from boom to obstacle in metres. */
     readonly distanceM: number;
     /** Required clearance in metres. */
     readonly requiredClearanceM: number;
     /** Operating radius of the boom tip in metres. */
     readonly boomTipRadiusM: number;
-    /** Horizontal gap = distance - boomTipRadius - requiredClearance.
-     *  Positive = safe margin; negative = violation. */
+    /** Horizontal gap = distance - requiredClearance. Positive = safe margin; negative = violation. */
     readonly marginM: number;
     readonly status: "PASS" | "FAIL";
+    /** True if boom physically intersects or penetrates obstacle volume/hazard plane. */
+    readonly isCollision: boolean;
 }
+
+export type OverallVerdict = "ALL PASS" | "FAIL" | "INCOMPLETE";
 
 /** Full computed state after one reactive tick. */
 export interface MobilePlacementResult {
@@ -92,10 +108,18 @@ export interface MobilePlacementResult {
     readonly padReactions: PadReactionsResult;
     /** Ground bearing for the worst (heaviest) pad. */
     readonly worstPadBearing: GroundBearingResult;
+    /** Ground bearing status: PASS, FAIL or NOT_CHECKED. */
+    readonly bearingStatus: "PASS" | "FAIL" | "NOT_CHECKED";
     /** Per-obstacle clearance results (empty if no obstacles supplied). */
     readonly obstacleClearances: readonly ObstacleClearanceResult[];
-    /** Overall verdict: true only when capacity PASS, stable and no clearance FAIL. */
+    /** Overall clearance status across all obstacles: PASS, FAIL or NOT_CHECKED. */
+    readonly clearanceStatus: "PASS" | "FAIL" | "NOT_CHECKED";
+    /** Overall safety verdict: ALL PASS only when capacity, stability, bearing, and clearance all pass. */
+    readonly overallVerdict: OverallVerdict;
+    /** Backwards-compatible flag: true ONLY when overallVerdict === "ALL PASS". */
     readonly allPass: boolean;
+    /** Explanatory reasons when overallVerdict is INCOMPLETE. */
+    readonly incompleteReasons: readonly string[];
     readonly disclaimer: typeof PLANNING_DISCLAIMER;
 }
 
@@ -126,14 +150,165 @@ export function createDefaultPlacementInput(): MobilePlacementInput {
 }
 
 // ---------------------------------------------------------------------------
+// Input Validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validates placement input. Returns list of human-readable error messages.
+ * An empty list means input is valid.
+ */
+export function validatePlacementInput(input: MobilePlacementInput): string[] {
+    const errs: string[] = [];
+    if (!Number.isFinite(input.craneCentreXM)) errs.push("Crane Centre X must be a finite number");
+    if (!Number.isFinite(input.craneCentreYM)) errs.push("Crane Centre Y must be a finite number");
+    if (!Number.isFinite(input.slewAngleDeg)) errs.push("Slew angle must be a finite number");
+    if (!Number.isFinite(input.boomLengthM) || input.boomLengthM <= 0) {
+        errs.push("Boom length must be positive");
+    }
+    if (!Number.isFinite(input.boomAngleDeg) || input.boomAngleDeg < 0 || input.boomAngleDeg > 90) {
+        errs.push("Boom angle must be between 0° and 90°");
+    }
+    if (!Number.isFinite(input.payloadT) || input.payloadT < 0) {
+        errs.push("Payload must be non-negative");
+    }
+    if (!Number.isFinite(input.riggingT) || input.riggingT < 0) {
+        errs.push("Rigging weight must be non-negative");
+    }
+    if (!Number.isFinite(input.craneWeightT) || input.craneWeightT <= 0) {
+        errs.push("Crane self-weight must be positive");
+    }
+    if (!Number.isFinite(input.outriggerLengthSpreadM) || input.outriggerLengthSpreadM <= 0) {
+        errs.push("Outrigger L spread must be positive");
+    }
+    if (!Number.isFinite(input.outriggerWidthSpreadM) || input.outriggerWidthSpreadM <= 0) {
+        errs.push("Outrigger W spread must be positive");
+    }
+    if (!Number.isFinite(input.padAreaM2) || input.padAreaM2 <= 0) {
+        errs.push("Pad area must be positive");
+    }
+    if (
+        input.allowableBearingT_M2 !== undefined &&
+        (!Number.isFinite(input.allowableBearingT_M2) || input.allowableBearingT_M2 <= 0)
+    ) {
+        errs.push("Allowable ground bearing must be positive if specified");
+    }
+    return errs;
+}
+
+// ---------------------------------------------------------------------------
+// 2D Geometric Distance Helpers
+// ---------------------------------------------------------------------------
+
+function distancePointToSegment(
+    px: number,
+    py: number,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+): number {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+    const projX = x1 + t * dx;
+    const projY = y1 + t * dy;
+    return Math.hypot(px - projX, py - projY);
+}
+
+function segmentsIntersect(
+    a1x: number,
+    a1y: number,
+    a2x: number,
+    a2y: number,
+    b1x: number,
+    b1y: number,
+    b2x: number,
+    b2y: number,
+): boolean {
+    function ccw(ax: number, ay: number, bx: number, by: number, cx: number, cy: number): number {
+        return (cy - ay) * (bx - ax) - (by - ay) * (cx - ax);
+    }
+    const ccw1 = ccw(a1x, a1y, a2x, a2y, b1x, b1y);
+    const ccw2 = ccw(a1x, a1y, a2x, a2y, b2x, b2y);
+    const ccw3 = ccw(b1x, b1y, b2x, b2y, a1x, a1y);
+    const ccw4 = ccw(b1x, b1y, b2x, b2y, a2x, a2y);
+
+    if (
+        ((ccw1 > 0 && ccw2 < 0) || (ccw1 < 0 && ccw2 > 0)) &&
+        ((ccw3 > 0 && ccw4 < 0) || (ccw3 < 0 && ccw4 > 0))
+    ) {
+        return true;
+    }
+    return false;
+}
+
+function distanceSegmentToSegment(
+    a1x: number,
+    a1y: number,
+    a2x: number,
+    a2y: number,
+    b1x: number,
+    b1y: number,
+    b2x: number,
+    b2y: number,
+): number {
+    if (segmentsIntersect(a1x, a1y, a2x, a2y, b1x, b1y, b2x, b2y)) {
+        return 0;
+    }
+    return Math.min(
+        distancePointToSegment(a1x, a1y, b1x, b1y, b2x, b2y),
+        distancePointToSegment(a2x, a2y, b1x, b1y, b2x, b2y),
+        distancePointToSegment(b1x, b1y, a1x, a1y, a2x, a2y),
+        distancePointToSegment(b2x, b2y, a1x, a1y, a2x, a2y),
+    );
+}
+
+function pointInPolygon(px: number, py: number, poly: readonly (readonly [number, number])[]): boolean {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const xi = poly[i][0];
+        const yi = poly[i][1];
+        const xj = poly[j][0];
+        const yj = poly[j][1];
+        const intersect = yi > py !== yj > py && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi;
+        if (intersect) inside = !inside;
+    }
+    return inside;
+}
+
+function distanceSegmentToPolygon(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number,
+    poly: readonly (readonly [number, number])[],
+): number {
+    if (poly.length === 0) return Infinity;
+    if (pointInPolygon(x1, y1, poly) || pointInPolygon(x2, y2, poly)) {
+        return 0;
+    }
+    let minD = Infinity;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const ex1 = poly[j][0];
+        const ey1 = poly[j][1];
+        const ex2 = poly[i][0];
+        const ey2 = poly[i][1];
+        const d = distanceSegmentToSegment(x1, y1, x2, y2, ex1, ey1, ex2, ey2);
+        if (d === 0) return 0;
+        if (d < minD) minD = d;
+    }
+    return minD;
+}
+
+// ---------------------------------------------------------------------------
 // Core reactive computation (single-tick, synchronous)
 // ---------------------------------------------------------------------------
 
 /**
- * Computes the full placement result from one set of inputs plus optional
- * site obstacles.  This is the "single source of truth" that the UI panel
- * calls on every input change.  No stale values: every output is derived
- * from the supplied input in the same synchronous call.
+ * Computes the full placement result from one set of inputs plus site obstacles.
+ * Single source of truth: all outputs are derived from input in the same tick.
  *
  * Acceptance test (BACKLOG.md M8):
  *   "Move the crane and capacity, pad loads and clearance all update;
@@ -143,15 +318,17 @@ export function computePlacement(
     input: MobilePlacementInput,
     obstacles: readonly SiteObstacle[] = [],
 ): MobilePlacementResult {
-    // --- 1. Operating radius from boom geometry (Rushikesh's module) ---
+    const validationErrors = validatePlacementInput(input);
+    if (validationErrors.length > 0) {
+        throw new Error(`Invalid placement input: ${validationErrors.join("; ")}`);
+    }
+
+    // --- 1. Operating radius from boom geometry ---
     const operatingRadiusM = expectedRadiusM(input.boomLengthM, input.boomAngleDeg);
 
-    // --- 2. Capacity lookup (Rushikesh's chart) ---
-    // The chart uses discrete boom / radius cells.  Find the chart radius
-    // that is >= operatingRadiusM (conservative: capacity decreases with radius).
-    const chartRadii = [5, 8, 10, 11, 12, 15, 20, 30] as const;
+    // --- 2. Capacity lookup from KIT chart ---
     let lookupRadiusM: number | undefined;
-    for (const r of chartRadii) {
+    for (const r of CHART_RADII_M) {
         if (r >= operatingRadiusM) {
             lookupRadiusM = r;
             break;
@@ -172,7 +349,7 @@ export function computePlacement(
         capacityStatus = "FAIL";
     }
 
-    // --- 4. Outrigger pad reactions (Sujal's module) ---
+    // --- 4. Outrigger pad reactions ---
     const padReactions = calculatePadReactionsFromLift({
         craneWeightT: input.craneWeightT,
         liftedLoadT: totalSuspendedLoadT,
@@ -182,35 +359,108 @@ export function computePlacement(
         widthSpreadM: input.outriggerWidthSpreadM,
     });
 
-    // --- 5. Ground bearing on worst pad (Sujal's module) ---
+    // --- 5. Ground bearing on worst pad ---
     const worstPadBearing = calculateGroundBearing(
         padReactions.maxReactionT,
         input.padAreaM2,
         input.allowableBearingT_M2,
     );
+    const bearingStatus = worstPadBearing.status;
 
-    // --- 6. 2D obstacle clearances ---
+    // --- 6. Boom segment coordinates in 2D plan ---
+    const rad = (input.slewAngleDeg * Math.PI) / 180;
+    const cosSlew = Math.cos(rad);
+    const sinSlew = Math.sin(rad);
+
+    // Boom pivot at crane centre + PIVOT_OFFSET_M along slew direction
+    const boomFootX = input.craneCentreXM + KIT.PIVOT_OFFSET_M * cosSlew;
+    const boomFootY = input.craneCentreYM + KIT.PIVOT_OFFSET_M * sinSlew;
+    // Boom tip at crane centre + operatingRadiusM along slew direction
+    const boomTipX = input.craneCentreXM + operatingRadiusM * cosSlew;
+    const boomTipY = input.craneCentreYM + operatingRadiusM * sinSlew;
+
+    // --- 7. Obstacle clearances (Polygon, Power Line wall, Point) ---
     const obstacleClearances: ObstacleClearanceResult[] = obstacles.map((obs) => {
-        const dx = obs.xM - input.craneCentreXM;
-        const dy = obs.yM - input.craneCentreYM;
-        const distanceM = Math.hypot(dx, dy);
-        const marginM = distanceM - operatingRadiusM - obs.requiredClearanceM;
+        let distanceM: number;
+        let isCollision = false;
+
+        if (obs.polygon && obs.polygon.length >= 3) {
+            // Polygon footprint obstacle (e.g. Tower A building)
+            distanceM = distanceSegmentToPolygon(boomFootX, boomFootY, boomTipX, boomTipY, obs.polygon);
+            if (distanceM <= 1e-4) {
+                distanceM = 0;
+                isCollision = true;
+            }
+        } else if (obs.xLineM !== undefined) {
+            // Infinite vertical plane hazard (e.g. 22 kV power line at x = -9 m)
+            const minBoomX = Math.min(boomFootX, boomTipX);
+            const maxBoomX = Math.max(boomFootX, boomTipX);
+            if (minBoomX <= obs.xLineM && obs.xLineM <= maxBoomX) {
+                distanceM = 0;
+                isCollision = true;
+            } else {
+                distanceM = Math.min(Math.abs(boomFootX - obs.xLineM), Math.abs(boomTipX - obs.xLineM));
+            }
+        } else if (obs.xM !== undefined && obs.yM !== undefined) {
+            // Point obstacle
+            distanceM = distancePointToSegment(obs.xM, obs.yM, boomFootX, boomFootY, boomTipX, boomTipY);
+        } else {
+            distanceM = Infinity;
+        }
+
+        const marginM = distanceM - obs.requiredClearanceM;
+        const status = marginM >= 0 && !isCollision ? ("PASS" as const) : ("FAIL" as const);
+
         return {
             label: obs.label,
             distanceM,
             requiredClearanceM: obs.requiredClearanceM,
             boomTipRadiusM: operatingRadiusM,
             marginM,
-            status: marginM >= 0 ? ("PASS" as const) : ("FAIL" as const),
+            status,
+            isCollision,
         };
     });
 
-    // --- 7. Overall verdict ---
-    const allPass =
+    const clearanceStatus: "PASS" | "FAIL" | "NOT_CHECKED" =
+        obstacles.length === 0
+            ? "NOT_CHECKED"
+            : obstacleClearances.some((c) => c.status === "FAIL")
+              ? "FAIL"
+              : "PASS";
+
+    // --- 8. Overall Safety Verdict ---
+    const incompleteReasons: string[] = [];
+    if (capacityStatus === "NO_DATA") {
+        incompleteReasons.push("Capacity outside chart");
+    }
+    if (bearingStatus === "NOT_CHECKED") {
+        incompleteReasons.push("Ground bearing not checked (allowable bearing required)");
+    }
+    if (clearanceStatus === "NOT_CHECKED") {
+        incompleteReasons.push("Clearance not checked (no obstacles provided)");
+    }
+
+    let overallVerdict: OverallVerdict;
+    if (
+        capacityStatus === "FAIL" ||
+        !padReactions.isStable ||
+        bearingStatus === "FAIL" ||
+        clearanceStatus === "FAIL"
+    ) {
+        overallVerdict = "FAIL";
+    } else if (
         capacityStatus === "PASS" &&
         padReactions.isStable &&
-        (worstPadBearing.status === "PASS" || worstPadBearing.status === "NOT_CHECKED") &&
-        obstacleClearances.every((c) => c.status === "PASS");
+        bearingStatus === "PASS" &&
+        clearanceStatus === "PASS"
+    ) {
+        overallVerdict = "ALL PASS";
+    } else {
+        overallVerdict = "INCOMPLETE";
+    }
+
+    const allPass = overallVerdict === "ALL PASS";
 
     return {
         input,
@@ -221,8 +471,12 @@ export function computePlacement(
         capacityStatus,
         padReactions,
         worstPadBearing,
+        bearingStatus,
         obstacleClearances,
+        clearanceStatus,
+        overallVerdict,
         allPass,
+        incompleteReasons,
         disclaimer: PLANNING_DISCLAIMER,
     };
 }
