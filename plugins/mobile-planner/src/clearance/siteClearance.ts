@@ -357,12 +357,28 @@ export function isRedFlag(result: ObstacleClearanceResult | null | undefined): b
     return result ? statusToColour(result.status) === "red" : false;
 }
 
-function statusFor(
+/**
+ * Classifies clearance status based on surface distance and clearance limit.
+ *
+ * Rules:
+ *  - clearanceLimitM must be a non-negative finite number (>= 0).
+ *    Throws RangeError on NaN, Infinity, or negative values to prevent false SAFE.
+ *  - isCollision || isTouching → CRITICAL
+ *  - minDistanceM < limitM → WARNING
+ *  - minDistanceM >= limitM → SAFE
+ */
+export function statusFor(
     minDistanceM: number,
     isCollision: boolean,
     isTouching: boolean,
     limitM: number,
 ): ObstacleClearanceResult["status"] {
+    if (!Number.isFinite(limitM) || limitM < 0) {
+        throw new RangeError(
+            `clearanceLimitM must be a non-negative finite number (got ${limitM}). ` +
+                `NaN or negative limits would otherwise return a false SAFE.`,
+        );
+    }
     if (isCollision || isTouching) return "CRITICAL";
     if (minDistanceM < limitM) return "WARNING";
     return "SAFE";

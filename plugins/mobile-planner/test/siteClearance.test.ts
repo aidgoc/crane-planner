@@ -22,6 +22,7 @@ import {
     type ObstacleFootprint,
     type PowerLineObstacle,
     type SiteClearanceReport,
+    statusFor,
     statusToColour,
     validateBoomPlacement,
 } from "../src/clearance/siteClearance";
@@ -274,6 +275,32 @@ describe("Task M6: statusToColour / isRedFlag — BACKLOG M6 red-highlight rule"
     });
 });
 
+// ===========================================================================
+describe("Task M6: statusFor — clearanceLimitM validation (safety must-fix)", () => {
+    test("clearanceLimitM = NaN throws RangeError — prevents false SAFE", () => {
+        expect(() => statusFor(5.0, false, false, Number.NaN)).toThrow(RangeError);
+    });
+
+    test("clearanceLimitM < 0 throws RangeError — negative limit is invalid", () => {
+        expect(() => statusFor(5.0, false, false, -1.0)).toThrow(RangeError);
+        expect(() => statusFor(5.0, false, false, -0.01)).toThrow(RangeError);
+    });
+
+    test("clearanceLimitM Infinity throws RangeError", () => {
+        expect(() => statusFor(5.0, false, false, Number.POSITIVE_INFINITY)).toThrow(RangeError);
+        expect(() => statusFor(5.0, false, false, Number.NEGATIVE_INFINITY)).toThrow(RangeError);
+    });
+
+    test("valid clearanceLimitM: collision/touching → CRITICAL, below limit → WARNING, at or above limit → SAFE", () => {
+        expect(statusFor(0, true, false, 2.0)).toBe("CRITICAL");
+        expect(statusFor(0, false, true, 2.0)).toBe("CRITICAL");
+        expect(statusFor(1.0, false, false, 2.0)).toBe("WARNING");
+        expect(statusFor(2.0, false, false, 2.0)).toBe("SAFE");
+        expect(statusFor(3.0, false, false, 2.0)).toBe("SAFE");
+        expect(statusFor(0.5, false, false, 0)).toBe("SAFE");
+    });
+});
+
 // Returns the result for one obstacle id; fails the test with a clear message if it is missing.
 function findResult(report: SiteClearanceReport, id: string): ObstacleClearanceResult {
     const result = report.obstacles.find((r) => r.obstacleId === id);
@@ -422,6 +449,17 @@ describe("Task M6: checkOneClearance — boom vs Tower A", () => {
         expect(result.isCollision).toBe(false);
         expect(result.minDistanceM).toBeCloseTo(2.0, 1);
         expect(result.status).toBe("SAFE");
+    });
+
+    test("invalid obstacle clearanceLimitM (NaN or negative) throws RangeError through checkOneClearance", () => {
+        const boom = buildBoomSolid(factory, safePlacement());
+        const building = buildBuildingSolid(factory, TOWER_A);
+        expect(() =>
+            checkOneClearance(boom, building, { ...TOWER_A, clearanceLimitM: Number.NaN }, factory),
+        ).toThrow(RangeError);
+        expect(() =>
+            checkOneClearance(boom, building, { ...TOWER_A, clearanceLimitM: -1.0 }, factory),
+        ).toThrow(RangeError);
     });
 });
 
