@@ -7,7 +7,7 @@
 // Owner: Abhishek
 // ============================================================================
 
-import { type IShape, type IShapeFactory, type ISolid, XYZ } from "@chili3d/core";
+import { type IFace, type IShape, type IShapeFactory, type ISolid, XYZ } from "@chili3d/core";
 import type { ClearanceResult } from "./distance";
 import { computeClearanceDistance, MM_PER_M } from "./distance";
 
@@ -273,8 +273,6 @@ export function buildBuildingSolid(factory: IShapeFactory, footprint: ObstacleFo
 /**
  * Builds a thin vertical wall face to stand in for a power-line wire.
  *
- * NOTE: despite the name, this returns a face (IShape), not a solid.
- *
  * The face is a rectangle at x = pl.x_m, spanning:
  *   Y: −200 m … +200 m   (arbitrary large extent)
  *   Z:    0 m … +200 m   (ground to 200 m; the real wire height is not in the site data)
@@ -289,7 +287,7 @@ export function buildBuildingSolid(factory: IShapeFactory, footprint: ObstacleFo
  *
  * Units: metres input → mm in factory.
  */
-export function buildPowerLineSolid(factory: IShapeFactory, pl: PowerLineObstacle): IShape {
+export function buildPowerLineWall(factory: IShapeFactory, pl: PowerLineObstacle): IFace {
     // Four corners of the vertical wall at x = pl.x_m (in mm)
     const xMm = pl.x_m * MM_PER_M;
     const yMinMm = -200 * MM_PER_M;
@@ -311,15 +309,15 @@ export function buildPowerLineSolid(factory: IShapeFactory, pl: PowerLineObstacl
         [p10, p00],
     ] as [XYZ, XYZ][]) {
         const r = factory.line(a, b);
-        if (!r.isOk) throw new Error(`buildPowerLineSolid(${pl.id}): edge failed — ${r.error}`);
+        if (!r.isOk) throw new Error(`buildPowerLineWall(${pl.id}): edge failed — ${r.error}`);
         edges.push(r.value);
     }
 
     const wireRes = factory.wire(edges);
-    if (!wireRes.isOk) throw new Error(`buildPowerLineSolid(${pl.id}): wire failed — ${wireRes.error}`);
+    if (!wireRes.isOk) throw new Error(`buildPowerLineWall(${pl.id}): wire failed — ${wireRes.error}`);
 
     const faceRes = factory.face([wireRes.value as Parameters<typeof factory.face>[0][0]]);
-    if (!faceRes.isOk) throw new Error(`buildPowerLineSolid(${pl.id}): face failed — ${faceRes.error}`);
+    if (!faceRes.isOk) throw new Error(`buildPowerLineWall(${pl.id}): face failed — ${faceRes.error}`);
 
     return faceRes.value;
 }
@@ -447,11 +445,11 @@ export function computeSiteClearance(
 
     // Check power line (optional)
     if (powerLine) {
-        const solid = buildPowerLineSolid(factory, powerLine);
+        const wall = buildPowerLineWall(factory, powerLine);
         results.push(
             checkOneClearance(
                 boomSolid,
-                solid,
+                wall,
                 { id: powerLine.id, label: powerLine.label, clearanceLimitM: powerLine.clearanceLimitM },
                 factory,
             ),

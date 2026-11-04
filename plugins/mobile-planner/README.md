@@ -124,7 +124,7 @@ record and the traceable page-17 transcription.
 ## M6 Boom Clearance to Site Obstacles
 
 - **3D Solids:** Crane boom is modelled as an extruded cylinder from pivot `(x, y, z)` with user-supplied radius $R$, length $L$, slew angle $\theta$, and elevation $\alpha$. Site buildings are extruded from 2D polygons into 3D prisms (`buildBuildingSolid`).
-- **Power Line Hazard:** Modelled as a conservative vertical face at $x = -9.0\,\text{m}$ spanning $\pm 200\,\text{m}$ in $Y$ and $0\text{--}200\,\text{m}$ in $Z$ (`buildPowerLineSolid`).
+- **Power Line Hazard:** Modelled as a conservative vertical face at the power line's `x_m` (sample site: $x = -9.0\,\text{m}$), spanning $\pm 200\,\text{m}$ in $Y$ and $0\text{--}200\,\text{m}$ in $Z$ (`buildPowerLineWall`). The real wire height is not in the site data, so the wall is taller than the wire. A boom that crosses the wall is reported `CRITICAL` with `isTouching = true` and `isCollision = false`.
 - **Clearance Query:** Evaluates Euclidean distance via OpenCASCADE `extremaDistance` and `booleanCommon`.
 - **Status Classification:**
   - `SAFE`: $\text{distance} \ge \text{clearanceLimitM}$ (shown green)

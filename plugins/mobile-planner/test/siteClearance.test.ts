@@ -8,17 +8,20 @@
 // ============================================================================
 
 import { ShapeFactory } from "@chili3d/wasm";
+import { MM_PER_M } from "../src/clearance/distance";
 import {
     type BoomPlacement,
     boomDirection,
     buildBoomSolid,
     buildBuildingSolid,
-    buildPowerLineSolid,
+    buildPowerLineWall,
     checkOneClearance,
     computeSiteClearance,
     isRedFlag,
+    type ObstacleClearanceResult,
     type ObstacleFootprint,
     type PowerLineObstacle,
+    type SiteClearanceReport,
     statusToColour,
     validateBoomPlacement,
 } from "../src/clearance/siteClearance";
@@ -271,8 +274,15 @@ describe("Task M6: statusToColour / isRedFlag — BACKLOG M6 red-highlight rule"
     });
 });
 
+// Returns the result for one obstacle id; fails the test with a clear message if it is missing.
+function findResult(report: SiteClearanceReport, id: string): ObstacleClearanceResult {
+    const result = report.obstacles.find((r) => r.obstacleId === id);
+    if (!result) throw new Error(`no clearance result for obstacle "${id}"`);
+    return result;
+}
+
 // ===========================================================================
-describe("Task M6: buildBuildingSolid & buildPowerLineSolid unit tests", () => {
+describe("Task M6: buildBuildingSolid & buildPowerLineWall unit tests", () => {
     let factory: ShapeFactory;
     beforeEach(() => {
         factory = new ShapeFactory();
@@ -293,14 +303,24 @@ describe("Task M6: buildBuildingSolid & buildPowerLineSolid unit tests", () => {
         ).toThrow("polygon must have ≥ 3 vertices");
     });
 
-    test("buildBuildingSolid creates a valid solid prism", () => {
+    test("buildBuildingSolid extrudes the footprint to full height (volume = area x height)", () => {
+        // Tower A: 40 m x 22 m footprint, 75 m high = 66 000 m3. The kernel works in mm.
         const solid = buildBuildingSolid(factory, TOWER_A);
-        expect(solid).toBeDefined();
+        const expectedMm3 = 40 * 22 * 75 * MM_PER_M ** 3;
+        expect(Math.abs(solid.volume() - expectedMm3) / expectedMm3).toBeLessThan(1e-6);
     });
 
-    test("buildPowerLineSolid creates a vertical face shape", () => {
-        const face = buildPowerLineSolid(factory, POWER_LINE);
-        expect(face).toBeDefined();
+    test("buildPowerLineWall builds a flat 400 m x 200 m face at x = x_m", () => {
+        const wall = buildPowerLineWall(factory, POWER_LINE);
+
+        // Area: 400 m (Y) x 200 m (Z) = 80 000 m2, in mm2 for the kernel.
+        const expectedMm2 = 400 * 200 * MM_PER_M ** 2;
+        expect(Math.abs(wall.area() - expectedMm2) / expectedMm2).toBeLessThan(1e-6);
+
+        // Flat: both X limits sit at x_m (-9.0 m = -9000 mm).
+        const box = wall.boundingBox();
+        expect(box.min.x).toBeCloseTo(POWER_LINE.x_m * MM_PER_M, 3);
+        expect(box.max.x).toBeCloseTo(POWER_LINE.x_m * MM_PER_M, 3);
     });
 });
 
@@ -447,8 +467,7 @@ describe("Task M6: computeSiteClearance — full site check", () => {
         };
         const report = computeSiteClearance(factory, placement, [TOWER_A, PODIUM, TOWER_B], POWER_LINE);
 
-        const towerA = report.obstacles.find((r) => r.obstacleId === "tower_a")!;
-        expect(towerA).toBeDefined();
+        const towerA = findResult(report, "tower_a");
         expect(towerA.isCollision).toBe(false);
         expect(towerA.minDistanceM).toBeCloseTo(2.43, 1); // hand-computed: 2.43 m ± 0.1 m
         expect(towerA.status).toBe("SAFE");
@@ -476,7 +495,7 @@ describe("Task M6: computeSiteClearance — full site check", () => {
         const report = computeSiteClearance(factory, placement, [TOWER_A, TOWER_B], POWER_LINE);
 
         expect(report.anyCollision).toBe(false);
-        const towerA = report.obstacles.find((r) => r.obstacleId === "tower_a")!;
+        const towerA = findResult(report, "tower_a");
         expect(towerA.status).toBe("SAFE");
         expect(towerA.minDistanceM).toBeCloseTo(10.0, 1); // kernel: 10.0 m
         expect(report.disclaimer).toBe("Planning aid, not a certified lift plan.");
@@ -502,8 +521,7 @@ describe("Task M6: computeSiteClearance — full site check", () => {
         };
         const report = computeSiteClearance(factory, placement, [], POWER_LINE);
 
-        const pl = report.obstacles.find((r) => r.obstacleId === "power_line")!;
-        expect(pl).toBeDefined();
+        const pl = findResult(report, "power_line");
         expect(pl.isCollision).toBe(false);
         expect(pl.minDistanceM).toBeCloseTo(2.0, 1); // kernel: 2.0 m
         expect(pl.status).toBe("WARNING");
@@ -525,8 +543,7 @@ describe("Task M6: computeSiteClearance — full site check", () => {
         };
         const report = computeSiteClearance(factory, placement, [], POWER_LINE);
 
-        const pl = report.obstacles.find((r) => r.obstacleId === "power_line")!;
-        expect(pl).toBeDefined();
+        const pl = findResult(report, "power_line");
         expect(pl.status).toBe("CRITICAL");
         expect(report.anyCollision).toBe(true);
         expect(report.disclaimer).toBe("Planning aid, not a certified lift plan.");
@@ -549,8 +566,7 @@ describe("Task M6: computeSiteClearance — full site check", () => {
         };
         const report = computeSiteClearance(factory, placement, [], POWER_LINE);
 
-        const pl = report.obstacles.find((r) => r.obstacleId === "power_line")!;
-        expect(pl).toBeDefined();
+        const pl = findResult(report, "power_line");
         expect(pl.isCollision).toBe(false);
         expect(pl.minDistanceM).toBeCloseTo(14.0, 1); // pivot base at x=5, wire at x=−9 → 14.0 m
         expect(pl.status).toBe("SAFE");
@@ -581,8 +597,7 @@ describe("Task M6: computeSiteClearance — full site check", () => {
         };
         const report = computeSiteClearance(factory, placement, [PODIUM]);
 
-        const podium = report.obstacles.find((r) => r.obstacleId === "podium")!;
-        expect(podium).toBeDefined();
+        const podium = findResult(report, "podium");
         expect(podium.isCollision).toBe(false);
         expect(podium.minDistanceM).toBeCloseTo(1.12, 1);
         expect(report.disclaimer).toBe("Planning aid, not a certified lift plan.");
