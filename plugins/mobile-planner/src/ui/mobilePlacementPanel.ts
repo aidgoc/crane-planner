@@ -516,6 +516,14 @@ export class MobileCranePlacementPanel {
         this.rBearing.val.textContent = `${fmt(r.worstPadBearing.pressureKPa, 1)} kPa `;
         if (r.bearingStatus === "NOT_CHECKED") {
             this.rBearing.val.appendChild(badge("NOT CHECKED", "warn"));
+            // Point 4 — explicit guidance so the user knows what to enter
+            this.rBearing.el.appendChild(
+                div({
+                    className: style.note,
+                    textContent:
+                        "Ground bearing not checked \u2014 enter allowable bearing pressure to enable this check.",
+                }),
+            );
         } else {
             this.rBearing.val.appendChild(
                 badge(r.bearingStatus, r.bearingStatus === "PASS" ? "pass" : "fail"),
@@ -525,7 +533,23 @@ export class MobileCranePlacementPanel {
         // Obstacles
         this.obstacleContainer.textContent = "";
         this.obstacleContainer.appendChild(
-            div({ className: style.sectionTitle, textContent: "Obstacle Clearances (Sample Site)" }),
+            div({ className: style.sectionTitle, textContent: "Obstacle Clearances" }),
+        );
+        // Point 1 — 2D-only clearance limitation note
+        this.obstacleContainer.appendChild(
+            div({
+                className: style.note,
+                textContent:
+                    "\u26a0 Horizontal plan clearance only \u2014 vertical clearance is not evaluated.",
+            }),
+        );
+        // Point 3 — INDICATIVE sample-site values notice
+        this.obstacleContainer.appendChild(
+            div({
+                className: style.note,
+                textContent:
+                    "INDICATIVE sample-site values (2 m clearance margin). Not verified engineering data \u2014 replace with site-specific figures for real projects.",
+            }),
         );
         if (r.obstacleClearances.length === 0) {
             this.obstacleContainer.appendChild(

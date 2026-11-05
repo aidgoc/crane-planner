@@ -55,17 +55,52 @@ export interface MobilePlacementInput {
     readonly allowableBearingT_M2?: number;
 }
 
-/** A single obstacle on the site for clearance checking. Supports polygons, hazard lines, and points. */
+/**
+ * A single obstacle on the site for clearance checking.
+ * Supports polygon footprints, vertical hazard planes (power lines), and point obstacles.
+ *
+ * @remarks
+ * **2D (horizontal plan) only** — clearance is evaluated in the top-down XY plan view.
+ * Building heights and vertical boom elevation are NOT considered; this module does not
+ * perform 3D sweep or vertical clearance checks. For 3D clearance see M6 (computeSiteClearance).
+ */
 export interface SiteObstacle {
     /** Human-readable label (e.g. "Tower A", "22 kV power line"). */
     readonly label: string;
-    /** Required minimum clearance in metres (INDICATIVE unless sourced). */
+    /** Required minimum clearance in metres (INDICATIVE unless sourced from a verified engineering document). */
     readonly requiredClearanceM: number;
-    /** 2D polygonal footprint in metres [[x0, y0], [x1, y1], ...]. */
+    /**
+     * 2D polygonal footprint in metres as [[x0, y0], [x1, y1], ...] pairs.
+     *
+     * @remarks
+     * **Horizontal plan clearance only.**  Clearance is computed as the shortest 2D distance
+     * from the projected boom-tip position to the polygon boundary.  Building height (heightM)
+     * and boom elevation are NOT included in this calculation.  Future contributors must NOT
+     * assume that vertical clearance is already covered here.
+     */
     readonly polygon?: readonly (readonly [number, number])[];
-    /** Obstacle height in metres (for 3D building check). */
+    /**
+     * Obstacle height in metres — for display and future 3D integration only.
+     *
+     * @remarks
+     * **This field is NOT used in the M8 clearance calculation.**  The current implementation
+     * is 2D (horizontal plan) only.  Height data is stored here so that a future 3D module
+     * (e.g. M6/M7 swing-sweep) can consume it without a schema change.
+     */
     readonly heightM?: number;
-    /** Vertical hazard wall at X coordinate in metres (e.g. power line). */
+    /**
+     * Infinite vertical hazard plane at a fixed X coordinate in metres (east-positive).
+     *
+     * Coordinate system: X = east (right in plan view), Y = north (up in plan view).
+     *
+     * Any slew direction that places the boom-tip X coordinate on the far side of this plane
+     * is treated as an intersection (distanceM = 0, isCollision = true), regardless of
+     * boom length or slew angle.  This models an overhead power line as a conservative
+     * infinite vertical wall spanning +-infinity in Y and Z — the most restrictive safe assumption.
+     *
+     * Clearance = (absolute X distance from boom tip to this plane) minus equiredClearanceM.
+     * A negative clearance means the required exclusion zone is violated.
+     */
     readonly xLineM?: number;
     /** Single obstacle centre X in metres (legacy / point obstacles). */
     readonly xM?: number;
