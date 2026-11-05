@@ -82,6 +82,9 @@ export const TOWER_I18N_KEYS = [
     "tower.status.outOfRange",
     "tower.status.invalid",
     "tower.status.unsupported",
+    "towerplanner.createCrane",
+    "towerplanner.createCrane.help",
+    "towerplanner.craneCreated",
 ] as const;
 
 export type TowerI18nKey = (typeof TOWER_I18N_KEYS)[number];
