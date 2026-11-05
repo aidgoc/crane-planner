@@ -681,3 +681,116 @@ describe("Task M6: computeSiteClearance — full site check", () => {
         }
     });
 });
+
+// ===========================================================================
+describe("Task M6: obstacle input validation — rejected before the kernel", () => {
+    let factory: ShapeFactory;
+    beforeEach(() => {
+        factory = new ShapeFactory();
+    });
+
+    // A copy of Tower A with one field changed.
+    const building = (overrides: Partial<ObstacleFootprint>): ObstacleFootprint => ({
+        ...TOWER_A,
+        ...overrides,
+    });
+
+    test("building height must be finite and > 0 (zero, negative, NaN, Infinity)", () => {
+        // The sample site has supply zones with height_m = 0. Without a check, a negative
+        // height extruded the building below ground and reported a false SAFE.
+        for (const height_m of [0, -5, Number.NaN, Number.POSITIVE_INFINITY]) {
+            expect(() =>
+                computeSiteClearance(factory, safePlacement(), [building({ id: "rebar_yard", height_m })]),
+            ).toThrow(RangeError);
+        }
+    });
+
+    test("the error names the obstacle and the field", () => {
+        expect(() =>
+            computeSiteClearance(factory, safePlacement(), [building({ id: "rebar_yard", height_m: 0 })]),
+        ).toThrow(/rebar_yard.*height_m/);
+    });
+
+    test("polygon coordinates must be finite", () => {
+        const withBadVertex = (x: number, y: number) =>
+            building({
+                polygon: [
+                    [25, 20],
+                    [x, y],
+                    [65, 42],
+                    [25, 42],
+                ],
+            });
+        expect(() => computeSiteClearance(factory, safePlacement(), [withBadVertex(Number.NaN, 20)])).toThrow(
+            RangeError,
+        );
+        expect(() =>
+            computeSiteClearance(factory, safePlacement(), [withBadVertex(65, Number.POSITIVE_INFINITY)]),
+        ).toThrow(RangeError);
+    });
+
+    test("polygon with fewer than 3 vertices throws RangeError", () => {
+        expect(() =>
+            computeSiteClearance(factory, safePlacement(), [
+                building({
+                    polygon: [
+                        [0, 0],
+                        [1, 1],
+                    ],
+                }),
+            ]),
+        ).toThrow(RangeError);
+    });
+
+    test("building clearanceLimitM must be finite and >= 0", () => {
+        for (const clearanceLimitM of [Number.NaN, -1, Number.POSITIVE_INFINITY]) {
+            expect(() =>
+                computeSiteClearance(factory, safePlacement(), [building({ clearanceLimitM })]),
+            ).toThrow(RangeError);
+        }
+    });
+
+    test("power line x_m must be finite", () => {
+        for (const x_m of [Number.NaN, Number.POSITIVE_INFINITY]) {
+            expect(() => computeSiteClearance(factory, safePlacement(), [], { ...POWER_LINE, x_m })).toThrow(
+                RangeError,
+            );
+        }
+    });
+
+    test("power line clearanceLimitM must be finite and >= 0", () => {
+        for (const clearanceLimitM of [Number.NaN, -6]) {
+            expect(() =>
+                computeSiteClearance(factory, safePlacement(), [], { ...POWER_LINE, clearanceLimitM }),
+            ).toThrow(RangeError);
+        }
+    });
+
+    test("one invalid obstacle rejects the whole call, even when it is not the first", () => {
+        expect(() =>
+            computeSiteClearance(factory, safePlacement(), [TOWER_A, building({ id: "bad", height_m: -1 })]),
+        ).toThrow(RangeError);
+    });
+
+    test("checkOneClearance rejects an invalid limit before it calls the kernel", () => {
+        // The shapes and the factory are placeholders. If the kernel were called first,
+        // this would throw a TypeError instead of the RangeError.
+        const notUsed = {} as never;
+        expect(() =>
+            checkOneClearance(
+                notUsed,
+                notUsed,
+                { id: "x", label: "x", clearanceLimitM: Number.NaN },
+                notUsed,
+            ),
+        ).toThrow(RangeError);
+        expect(() =>
+            checkOneClearance(notUsed, notUsed, { id: "x", label: "x", clearanceLimitM: -1 }, notUsed),
+        ).toThrow(RangeError);
+    });
+
+    test("valid sample-site obstacles are still accepted", () => {
+        const report = computeSiteClearance(factory, safePlacement(), [TOWER_A, PODIUM, TOWER_B], POWER_LINE);
+        expect(report.obstacles).toHaveLength(4);
+    });
+});

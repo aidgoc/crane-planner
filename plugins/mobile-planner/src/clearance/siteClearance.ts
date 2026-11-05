@@ -197,6 +197,66 @@ export function validateBoomPlacement(boom: BoomPlacement): void {
 }
 
 /**
+ * Checks one clearance limit. `owner` names the obstacle in the error message.
+ *
+ * A NaN or negative limit makes every distance without contact compare as SAFE
+ * (`distance < NaN` and `distance < -1` are both false), which is a false all-clear.
+ * A limit of 0 is allowed; it switches the WARNING zone off.
+ */
+function assertClearanceLimit(owner: string, limitM: number): void {
+    if (!Number.isFinite(limitM) || limitM < 0) {
+        throw new RangeError(
+            `${owner}: clearanceLimitM must be a non-negative finite number (got ${limitM}). ` +
+                `NaN or negative limits would otherwise return a false SAFE.`,
+        );
+    }
+}
+
+/**
+ * Validates a building footprint before any kernel call.
+ *
+ * Throws a descriptive RangeError, naming the obstacle, so that bad site data is
+ * rejected here and not by the kernel.
+ *
+ * Rules:
+ *  - polygon has at least 3 vertices, and every coordinate is finite
+ *  - height_m is finite and > 0 (zero: the kernel prism fails; negative: the building is
+ *    extruded below ground and the result was a false SAFE)
+ *  - clearanceLimitM is finite and >= 0
+ *
+ * Not checked: a polygon with zero area or crossing edges.
+ */
+export function validateObstacleFootprint(fp: ObstacleFootprint): void {
+    const owner = `ObstacleFootprint(${fp.id})`;
+    if (fp.polygon.length < 3) {
+        throw new RangeError(`${owner}: polygon must have ≥ 3 vertices (got ${fp.polygon.length}).`);
+    }
+    for (let i = 0; i < fp.polygon.length; i++) {
+        const [x, y] = fp.polygon[i];
+        if (!Number.isFinite(x) || !Number.isFinite(y)) {
+            throw new RangeError(`${owner}: polygon[${i}] must be two finite numbers (got [${x}, ${y}]).`);
+        }
+    }
+    if (!Number.isFinite(fp.height_m) || fp.height_m <= 0) {
+        throw new RangeError(`${owner}: height_m must be finite and > 0 (got ${fp.height_m}).`);
+    }
+    assertClearanceLimit(owner, fp.clearanceLimitM);
+}
+
+/**
+ * Validates the power-line obstacle before any kernel call.
+ *
+ * Rules: x_m is finite, and clearanceLimitM is finite and >= 0.
+ */
+export function validatePowerLineObstacle(pl: PowerLineObstacle): void {
+    const owner = `PowerLineObstacle(${pl.id})`;
+    if (!Number.isFinite(pl.x_m)) {
+        throw new RangeError(`${owner}: x_m must be finite (got ${pl.x_m}).`);
+    }
+    assertClearanceLimit(owner, pl.clearanceLimitM);
+}
+
+/**
  * Builds a 3D boom cylinder solid using the ShapeFactory.
  *
  * The cylinder axis starts at `pivotM` and extends in the direction computed
@@ -230,12 +290,11 @@ export function buildBoomSolid(factory: IShapeFactory, boom: BoomPlacement): ISo
  *
  * Units: polygon vertices and height in metres; factory calls use mm (×1000).
  *
- * @throws Error if the polygon has fewer than 3 vertices or extrusion fails.
+ * @throws RangeError if the footprint is invalid (see validateObstacleFootprint).
+ * @throws Error if extrusion fails.
  */
 export function buildBuildingSolid(factory: IShapeFactory, footprint: ObstacleFootprint): ISolid {
-    if (footprint.polygon.length < 3) {
-        throw new Error(`buildBuildingSolid(${footprint.id}): polygon must have ≥ 3 vertices`);
-    }
+    validateObstacleFootprint(footprint);
 
     // Build outline edges in mm
     const edges = [];
@@ -288,6 +347,8 @@ export function buildBuildingSolid(factory: IShapeFactory, footprint: ObstacleFo
  * Units: metres input → mm in factory.
  */
 export function buildPowerLineWall(factory: IShapeFactory, pl: PowerLineObstacle): IFace {
+    validatePowerLineObstacle(pl);
+
     // Four corners of the vertical wall at x = pl.x_m (in mm)
     const xMm = pl.x_m * MM_PER_M;
     const yMinMm = -200 * MM_PER_M;
@@ -373,12 +434,7 @@ export function statusFor(
     isTouching: boolean,
     limitM: number,
 ): ObstacleClearanceResult["status"] {
-    if (!Number.isFinite(limitM) || limitM < 0) {
-        throw new RangeError(
-            `clearanceLimitM must be a non-negative finite number (got ${limitM}). ` +
-                `NaN or negative limits would otherwise return a false SAFE.`,
-        );
-    }
+    assertClearanceLimit("statusFor", limitM);
     if (isCollision || isTouching) return "CRITICAL";
     if (minDistanceM < limitM) return "WARNING";
     return "SAFE";
@@ -403,6 +459,9 @@ export function checkOneClearance(
     meta: { id: string; label: string; clearanceLimitM: number },
     factory: IShapeFactory,
 ): ObstacleClearanceResult {
+    // Reject an invalid limit before the kernel runs.
+    assertClearanceLimit(meta.id, meta.clearanceLimitM);
+
     const raw: ClearanceResult = computeClearanceDistance(boomSolid, obstacleSolid, factory);
     const status = statusFor(raw.distanceM, raw.isCollision, raw.isTouching, meta.clearanceLimitM);
     return {
@@ -427,8 +486,8 @@ export function checkOneClearance(
  *  4. Call checkOneClearance for each obstacle.
  *  5. Sort results (most severe first, then closest) and pick the worst case.
  *
- * Throws if the placement is invalid, or if any one obstacle cannot be built or
- * measured. There is no partial result.
+ * Throws RangeError if the placement or any obstacle is invalid (checked before any kernel
+ * call), and Error if an obstacle cannot be built or measured. There is no partial result.
  *
  * @param factory - ShapeFactory (WASM-backed, initialised via initWasm).
  * @param placement - Boom geometry and crane position.
@@ -442,6 +501,10 @@ export function computeSiteClearance(
     buildings: ObstacleFootprint[],
     powerLine?: PowerLineObstacle,
 ): SiteClearanceReport {
+    // Validate every obstacle first, so that no kernel work is done for an invalid site.
+    for (const fp of buildings) validateObstacleFootprint(fp);
+    if (powerLine) validatePowerLineObstacle(powerLine);
+
     const boomSolid = buildBoomSolid(factory, placement);
 
     const results: ObstacleClearanceResult[] = [];

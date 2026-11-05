@@ -131,5 +131,5 @@ record and the traceable page-17 transcription.
   - `WARNING`: $0 < \text{distance} < \text{clearanceLimitM}$ (shown red per BACKLOG rule)
   - `CRITICAL`: Collision or touching ($\text{distance} = 0$, shown red)
 - **Verified Acceptance Test:** Boom $20\,\text{m}$, elevation $30^\circ$, slew $0^\circ$ from $(5, 31, 0)\,\text{m}$ gives $2.43\,\text{m}$ ($\pm 0.1\,\text{m}$) clearance to Tower A west face ($x = 25\,\text{m}$), verified by exact hand calculation.
-- **Fail-safe:** Empty site returns `worstCase = null`, preventing false `SAFE` indication. Input validation (`validateBoomPlacement`) prevents kernel aborts from invalid geometry.
+- **Fail-safe:** Empty site returns `worstCase = null`, preventing false `SAFE` indication. Input validation (`validateBoomPlacement`, `validateObstacleFootprint`, `validatePowerLineObstacle`) rejects invalid boom, building height, polygon, power-line position and clearance limit before the kernel runs, so bad data cannot produce a false `SAFE`.
 
