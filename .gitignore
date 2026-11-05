@@ -7,3 +7,5 @@ coverage
 .clang-format
 CMakeUserPresets.json
 types
+# Local crane source PDFs: no confirmed redistribution permission, so never track them.
+plugins/tower-planner/docs/*.pdf
