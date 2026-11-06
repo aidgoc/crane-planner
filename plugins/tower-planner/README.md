@@ -21,7 +21,7 @@ are transcribed from the PDF.
 | Path | Purpose |
 | --- | --- |
 | `data/crane-catalogue.json` | Crane data. Every number carries a source (document + page) or is explicitly `INDICATIVE`. |
-| `src/catalogueValidator.ts` | Strict JSON validator. Rejects bare numbers, unknown sources, malformed tip tables and load charts, missing `notStated` reasons, wrong entry counts and a non-MCT 88 default. |
+| `src/catalogueValidator.ts` | Strict JSON validator. Rejects bare numbers, unknown sources, malformed tip tables and load charts, missing `notStated` reasons, `notStated` heaviest components on the Potain trolley-jib entries, wrong entry counts and a non-MCT 88 default. `notStated` is permitted for the JASO model. |
 | `src/catalogue.ts` | Validates the JSON at module load and exposes `MCT88`, `MCT85F5`, `JASO_TD`, `JASO_2R`, `TOWER_CRANES` and `getCraneById`. |
 | `src/capacity.ts` | MCT 88 tip-load model, MCT 85 F5 chart lookup, the `SIMULATED` wind rule and the luffing-jib guard. |
 | `src/pickEngine.ts` | UI-independent pick evaluation, utilisation, PASS/FAIL and crane filtering. |
@@ -66,12 +66,19 @@ and page before using the result.
 
 ## Crane data
 
-| Crane | Standard (as printed) | Max capacity | Max working jib | Minimum radius | Default jib | Capacity source |
+| Crane | Catalogue standard | Max capacity | Max working jib | Minimum radius | Default jib | Capacity source |
 | --- | --- | --- | --- | --- | --- | --- |
 | Potain MCT 88 | EN 14439 C25 | 5 t | 52 m | n/a (idealised model) | 30 m (`INDICATIVE`) | Tip-load labels, datasheet p. 1 |
 | Potain MCT 85 F5 | FEM 1.001-A3 | 5 t | 52 m | 2.7 m (printed) | 30 m (`INDICATIVE`) | Per-radius chart, datasheet p. 3 |
 | JASO J438PA.2R (213 ft TD) | EN 14439 C25 / FEM 1005-C25 | 16.0118 t (converted) | 64.9224 m (213 ft) | 24.9936 m (82 ft) | 213 ft (`INDICATIVE`) | Imperial chart, p. 2; not evaluated (luffing-jib) |
 | JASO J438PA.2R (213 ft 2R) | EN 14439 C25 / FEM 1005-C25 | 18.0076 t (converted) | 64.9224 m (213 ft) | 24.9936 m (82 ft) | 213 ft (`INDICATIVE`) | Imperial chart, p. 2; not evaluated (luffing-jib) |
+
+The `Catalogue standard` column records the standard associated with each catalogue entry, not
+necessarily the standard printed on every source document. For the MCT 88, the e-catalogue URL
+identifies **EN 14439 C25**, whereas the inspected 8-page MCT 88 PDF prints **FEM 1.001-A3** on all
+eight pages and does not print EN 14439 C25. Both attributions are preserved; they are **not** claimed
+to be equivalent. Which standard the `standard` field should represent remains pending mentor
+confirmation.
 
 For both Potain cranes, 53.1 m is the overall tip length, not a working jib configuration. The
 published Potain working configurations are 20, 25, 30, 35, 40, 45, 50 and 52 m. The JASO chart values
@@ -165,9 +172,15 @@ The third row is the acceptance case from `BACKLOG.md`: a 4 t pick at 30 m on th
 - **MCT 85 F5:** counter-jib, 4.38 t (variant A, 14.6 m), datasheet p. 5; variant B is 4.25 t / 11.9 m.
   Do not apply the MCT 88 11.9 m / 4.38 t pairing to the MCT 85 F5 table.
 - **JASO J438PA.2R:** `notStated`. The pp. 6-7 packing list gives transport packages, not an
-  erection-component schedule. The heaviest line is a **combined** counter-jib + luffing mechanisms +
-  reeving block + auxiliary jib package of 45,310 lb (20.5523 t), stored separately as
-  `combinedTransportPackage`; it is not an individual erection lift.
+  erection-component schedule. The heaviest listed package is a **combined** counter-jib +
+  mechanisms + reeving block + auxiliary jib package of 45,310 lb (20.5523 t), stored separately
+  as `combinedTransportPackage`; it is not an individual erection lift. The PDF separately lists a
+  26,150 lb package described as counter-jib + luffing mechanisms + reeving block + auxiliary jib. It
+  is a different transport package and is not added as a catalogue entry because the schema stores
+  only one combined package.
+
+`validateCatalogue` requires a stated component with a positive mass for the two Potain trolley-jib
+entries; `notStated` is permitted only for the JASO model.
 
 These are component-weight tables, not erection sequences. They do not state the lift radius, rigging
 or assembly order. Confirm the actual heaviest lift against the manufacturer's erection manual before

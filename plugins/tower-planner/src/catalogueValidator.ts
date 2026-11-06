@@ -220,8 +220,20 @@ function validateCatalogueNumber(
     }
 }
 
-function validateHeaviestComponent(value: unknown, path: string, context: ValidationContext): void {
+function validateHeaviestComponent(
+    value: unknown,
+    path: string,
+    context: ValidationContext,
+    modelId: unknown,
+): void {
     if (isNotStated(value)) {
+        if (modelId !== JASO_MODEL_ID) {
+            addError(
+                context,
+                path,
+                "Only the JASO model may leave the heaviest erection component not stated.",
+            );
+        }
         if ("name" in value || "massT" in value) {
             addError(context, path, "A not-stated heaviest component cannot also carry a name or mass.");
         }
@@ -727,6 +739,7 @@ function validateCrane(crane: unknown, index: number, context: ValidationContext
         field(crane, "heaviestErectionComponent"),
         `${path}.heaviestErectionComponent`,
         numericContext,
+        field(crane, "modelId"),
     );
     validateCombinedPackage(
         field(crane, "combinedTransportPackage"),

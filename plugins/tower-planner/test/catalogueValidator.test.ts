@@ -467,6 +467,56 @@ describe("validateCatalogue", () => {
         expect(findError(errors, "cranes[0].heaviestErectionComponent.name")).toBeDefined();
     });
 
+    test.each([
+        ["potain-mct-88", 0],
+        ["potain-mct-85-f5", 1],
+    ])("rejects a notStated heaviest component for %s", (id, index) => {
+        const catalogue = cloneCatalogue();
+        expect(catalogue.cranes[index].id).toBe(id);
+        catalogue.cranes[index].heaviestErectionComponent = {
+            kind: "notStated",
+            reason: "inspection test",
+        };
+
+        const errors = expectErrors(validateCatalogue(catalogue));
+
+        expect(errors).toContainEqual({
+            path: `cranes[${index}].heaviestErectionComponent`,
+            message: "Only the JASO model may leave the heaviest erection component not stated.",
+        });
+    });
+
+    test.each([
+        ["jaso-j438pa-2r-td-213", 2],
+        ["jaso-j438pa-2r-2r-213", 3],
+    ])("accepts a notStated heaviest component for %s", (id, index) => {
+        const catalogue = cloneCatalogue();
+        expect(catalogue.cranes[index].id).toBe(id);
+        catalogue.cranes[index].heaviestErectionComponent = {
+            kind: "notStated",
+            reason: "inspection test",
+        };
+
+        const result = validateCatalogue(catalogue);
+
+        expect(result.ok).toBe(true);
+    });
+
+    test("accepts a stated heaviest component on a JASO entry", () => {
+        const catalogue = cloneCatalogue();
+        catalogue.cranes[2].heaviestErectionComponent = {
+            name: "Counter-jib",
+            massT: {
+                value: 4.38,
+                provenance: { kind: "source", sourceId: "packingList" },
+            },
+        };
+
+        const result = validateCatalogue(catalogue);
+
+        expect(result.ok).toBe(true);
+    });
+
     test("rejects a tip-load row that is not an object", () => {
         const catalogue = cloneCatalogue();
         catalogue.cranes[0].tipLoadByJib[0] = null;

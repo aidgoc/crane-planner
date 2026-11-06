@@ -16,8 +16,8 @@ page number is found later, record it alongside the PDF index.
 
 | Crane | Document | Pages | What it supplies |
 | --- | --- | --- | --- |
-| Potain MCT 88 | Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Code 09-003-.5M-0610), 8-page reference copy | pp. 1, 2, 6; local load curves p. 4 (Cycle 2 copy recorded p. 3, unresolved) | 5 t maximum, 52 m maximum working jib (53.1 m overall tip length), metric tip-load labels, p. 2 P12D height under hook and base width, dimensions and component weights |
-| Potain MCT 85 F5 | Potain MCT 85 F5 Data Sheet, FEM 1.001-A3 (Manitowoc, Ref. `02D_FEM1001mt_MCT85F5_2026_05-0`), copyright 2026 Manitowoc, 8 pages | pp. 1, 2, 3, 5 | 5 t maximum, 52 m maximum working jib, per-radius load curves for 8 jib lengths, p. 2 P12D height under hook and base width, counter-jib dimensions and masses |
+| Potain MCT 88 | Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Code 09-003-.5M-0610), 8-page reference copy | pp. 1, 2, 6; local load curves p. 4 (Cycle 2 copy recorded p. 3, unresolved) | 5 t maximum, 52 m maximum working jib (53.1 m overall tip length), metric tip-load labels, p. 2 P12D height under hook and ZC 2030 base width, dimensions and component weights |
+| Potain MCT 85 F5 | Potain MCT 85 F5 Data Sheet, FEM 1.001-A3 (Manitowoc, Ref. `02D_FEM1001mt_MCT85F5_2026_05-0`), copyright 2026 Manitowoc, 8 pages | pp. 1, 2, 3, 5 | 5 t maximum, 52 m maximum working jib, per-radius load curves for 8 jib lengths, p. 2 P12D height under hook and ZF 12A base width, counter-jib dimensions and masses |
 | Jaso J438PA.2R | Jaso J438PA.2R tower-crane brochure, EN 14439 C25 / FEM 1005-C25, dated 30/05/2025 (PDF metadata title `HT212.01.1.01`), 7 pages | pp. 1, 2, 6 (packing list continues on p. 7) | Luffing-jib configurations, H height without fastening, imperial TD/2R load charts, transport packing list |
 
 The MCT 85 F5 PDF has no title metadata and no printed page numbers; its description above comes
@@ -27,8 +27,9 @@ metadata is `HT212.01.1.01`, but the document is referred to by its model name h
 The MCT 88 reference copy is held outside this repository as `Potain-MCT-88_Reference.pdf` and is not
 committed. The e-catalogue URL stored in the JSON is
 <https://www.manitowoc.com/potain-ecatalog-en14439-c25d25.html>; the load-chart values were read from
-the PDF copy because the e-catalogue blocks automated access. The MCT 85 F5 and Jaso PDFs are in
-`plugins/tower-planner/docs/`.
+the PDF copy because the e-catalogue blocks automated access. The e-catalogue identifies
+**EN 14439 C25**, while the PDF prints **FEM 1.001-A3**; §3.1 records the distinction. The MCT 85 F5
+and Jaso PDFs are in `plugins/tower-planner/docs/`.
 
 ### PDF checksums
 
@@ -65,23 +66,37 @@ was verified from the documents themselves.
 
 | Field | Value | Provenance |
 | --- | --- | --- |
+| Catalogue standard | EN 14439 C25 | e-catalogue URL; the inspected PDF prints FEM 1.001-A3 on all 8 pages, not EN 14439 C25 |
 | Maximum capacity | 5 t | datasheet p. 1 |
 | Maximum working jib | 52 m | datasheet p. 1; confirmed by the p. 4 curves and p. 5 jib-weight table, which both stop at 52 m |
 | Overall tip length | 53.1 m | datasheet p. 1 drawing; **not** a working jib configuration |
 | Default jib | 30 m | **INDICATIVE** — Cycle 2 project configuration, not a manufacturer recommendation |
 | Mast width | 1.2 m × 1.2 m | datasheet p. 1 overview drawing; mast sections p. 7 also state 1.2 m |
-| Base width | 3.8 m | datasheet p. 2, P12D mast table |
-| Height under hook (`Ho`) | 43.1 m | datasheet p. 2, P12D mast table; this is **not** a freestanding-height limit |
+| Base width | 3.8 m | datasheet p. 2, ZC 2030 table; the P12D table states no base width |
+| Height under hook (`Ho`) | 43.1 m | datasheet p. 2, P12D table; the ZC 2030 and ZD 2030 tables give 41.5 m; this is **not** a freestanding-height limit |
 | Freestanding height | not stated | the inspected datasheet does not label a freestanding height; no value is inferred from `Ho` |
 | Counter-jib length | 11.9 m (variants A and B) | datasheet p. 6 |
 | Counter-jib radius | 13.7 m (variant A); 11.3 m (variant B) | datasheet p. 1 drawing; a different dimension from the p. 6 structural length |
 | Counter-jib mass | 4.38 t (variant A); 4.25 t (variant B) | datasheet p. 6 |
 | Cab mass | 1.10 t | datasheet p. 6 |
 
+**Standard attribution.** The catalogue `standard` field is **EN 14439 C25**, associated with the
+e-catalogue URL `potain-ecatalog-en14439-c25d25.html`. The inspected 8-page reference PDF is titled
+`Potain MCT 88 Data Sheet, FEM 1.001-A3 ...` and prints **FEM 1.001-A3** on all eight pages; it does
+not print EN 14439 C25. Both source statements are recorded separately and are **not** claimed to be
+equivalent. Which standard the `standard` field should represent remains pending mentor confirmation;
+the field value is unchanged.
+
 The p. 2 P12D table labels **43.1 m** as a height under hook. It is stored in `heightUnderHookM` with
 that meaning. It is **not** a freestanding-height limit, and `freestandingHeightM` is `notStated`
 because the inspected datasheet does not publish one. Do not use the height under hook as a
 freestanding height in planning.
+
+The same p. 2 prints ZC 2030 (height under hook **41.5 m**, base width **3.8 m**) and ZD 2030 (height
+under hook **41.5 m**, base width **4.5 m**) tables; the P12D table states no base width. The
+catalogue stores the **3.8 m** base width from ZC 2030 alongside the **43.1 m** height from P12D. That
+P12D-height / ZC 2030-base-width combination is unresolved and requires mentor confirmation; neither
+stored value is changed here.
 
 Tip-load table (jib length → published tip load): 20 m → 3.95 t, 25 m → 3.00 t, 30 m → 2.70 t,
 35 m → 2.27 t, 40 m → 1.95 t, 45 m → 1.70 t, 50 m → 1.45 t, 52 m → 1.15 t. These are the metric
@@ -228,13 +243,16 @@ Source notes and ambiguities:
 | Field | Value | Provenance |
 | --- | --- | --- |
 | Mast width | 1.2 m | p. 1 |
-| Base width | 3.8 m | p. 2, P12D mast table |
+| Base width | 3.8 m | p. 2, ZF 12A drawing; the P12D table states no base width |
 | Height under hook (`Ho`) | 41.6 m for 20-40 m jibs; 40.1 m for 45-52 m | p. 2, P12D mast table; the 30 m default jib uses 41.6 m; **not** a freestanding height |
 | Freestanding height | not stated | the inspected datasheet does not label a freestanding height; no value is inferred from `Ho` |
 | Counter-jib length | 14.6 m (variant A); 11.9 m (variant B) | p. 5 |
 | Counter-jib radius | 13.7 m (variant A); 11.3 m (variant B) | p. 1 drawing; a different dimension from the p. 5 structural length |
 | Counter-jib mass | 4.38 t (variant A); 4.25 t (variant B) | p. 5 |
 | Heaviest listed component | Counter-jib variant A, 4.38 t | p. 5 |
+
+The p. 2 **3.8 m** base width is labelled on the **ZF 12A** drawing. The P12D table supplies the height
+under hook but states no base width, so the base-width provenance is ZF 12A, not P12D.
 
 The catalogue uses variant A (the longer, heavier counter-jib) for both the counter-jib length and the
 `heaviestErectionComponent` mass. The p. 5 table is a **component-weight table, not an erection
@@ -300,6 +318,22 @@ The p. 2 charts are imperial. Catalogue values are converted with exactly:
 1 lb = 0.00045359237 t
 ```
 
+Page 2 prints five chart groups, identified by their head-line capacities:
+
+| Head-line group | Configuration |
+| --- | --- |
+| TD 35,300 lb | TD chart, 213 ft jib row |
+| TD/2R 35,300 / 70,500 lb | combined chart; 2R 70,500 lb values only on the 98-164 ft 2R jib rows |
+| 2R 39,700 lb | 2R chart, 213 ft jib row |
+| 2R 52,900 lb | 2R chart, 197 ft jib row |
+| 2R 66,100 lb | 2R chart, 180 ft jib row |
+
+The catalogue's 213 ft 2R entry is transcribed from the **2R 39,700 lb** chart. The 70,500 lb values
+belong to the separate TD/2R combined chart and are printed only for the 98-164 ft 2R rows; that
+chart's 180-213 ft rows carry TD values only. Substituting the 70,500 lb chart for the 39,700 lb chart
+would apply a shorter-jib capacity to the 213 ft configuration, so the chart families must not be
+mixed.
+
 TD chart, 213 ft jib row (82 ft to 213 ft):
 
 | Radius (ft) | Radius (m) | Capacity (lb) | Capacity (t) |
@@ -364,10 +398,14 @@ luffing-geometry capacity model that is not part of this task.
   length.
 - **Heaviest erection component:** `notStated`. The pp. 6-7 packing list is a transport list, not an
   erection-component schedule, so it does not establish the heaviest single lift.
-- **Combined transport package:** the packing-list line "Counterjib + Luffing mechanisms + Reeving
-  block + Auxiliary jib" is **45,310 lb = 20.5523 t**. It is stored separately in
-  `combinedTransportPackage` and is **not** used as the heaviest erection component. A combined
-  package mass is not the mass of any one item that has to be lifted during erection.
+- **Combined transport package:** the packing-list line "Counterjib + Mechanisms + Reeving block +
+  Auxiliary jib" is **45,310 lb = 20.5523 t**. It is stored separately in `combinedTransportPackage`
+  and is **not** used as the heaviest erection component. A combined package mass is not the mass of
+  any one item that has to be lifted during erection. The same packing list separately prints a
+  **26,150 lb** line described as "Counterjib + Luffing mechanisms + Reeving block + Auxiliary jib".
+  That is a different transport package and is not added as a catalogue entry because the schema
+  stores only one combined package. Do not apply the 45,310 lb description to the 26,150 lb line or
+  vice versa.
 
 The `notStated` entries are not gaps to be filled with plausible numbers. They record that the
 inspected document does not publish the value; a later source can replace them with a sourced value
@@ -383,6 +421,8 @@ and a page reference.
 - an `indicative` provenance has no basis;
 - a `notStated` value has no reason, or a `notStated` value also carries a numeric value;
 - required crane fields, dimensions or the heaviest component are missing;
+- a Potain trolley-jib crane's heaviest component is `notStated`; `notStated` is permitted only for the
+  JASO model;
 - the catalogue has fewer than 4 or more than 6 entries, the default crane is not
   `potain-mct-88`, or the first entry is not `potain-mct-88`;
 - `craneType`, `modelId`, `modelName` or `configuration` is missing, and the JASO model is not
@@ -422,9 +462,10 @@ tree or in Git history. [`validation-calculation.txt`](validation-calculation.tx
 labelled **reconstruction** created on 2026-10-28 from the current catalogue, this source note and the
 Cycle 2 comparison. It is not the recovered original and must not be cited as one. It records the
 MCT 88 formulas, units, error method, three-point comparison and source discrepancies, and keeps the
-MCT 85 F5 chart spot checks in a separate section. The MCT 88 reference PDF is absent, so the
-imperial readings are taken from the Cycle 2 notes rather than re-read from that PDF; no checksum is
-claimed for it.
+MCT 85 F5 chart spot checks in a separate section. The MCT 88 reference PDF
+(`Potain-MCT-88_Reference.pdf`, 8 pages) is held outside this repository and was inspected; its
+SHA-256 is recorded in §2. The reconstruction's imperial readings were nevertheless taken from the
+Cycle 2 notes rather than re-read from that PDF.
 
 ## 8. Reproduction
 

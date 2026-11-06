@@ -30,7 +30,7 @@
                     "document": "Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Code 09-003-.5M-0610)",
                     "page": 2,
                     "section": "Mast - reactions / P12D",
-                    "note": "Page 2 of the 8-page reference PDF (held outside this repository). The P12D mast table gives a height under hook of 43.1 m and a 3.8 m base width. The height under hook is not a freestanding-height limit; no freestanding height is stated in the inspected datasheet."
+                    "note": "Page 2 of the 8-page reference PDF (held outside this repository). The P12D mast table gives a height under hook of 43.1 m but states no base width; the ZC 2030 table gives a height under hook of 41.5 m and a 3.8 m base width; the ZD 2030 table gives a height under hook of 41.5 m and a 4.5 m base width. The catalogue stores 3.8 m (ZC 2030) with the 43.1 m height from P12D; that P12D-height / ZC 2030-base-width combination is unresolved and requires mentor confirmation. The height under hook is not a freestanding-height limit; no freestanding height is stated in the inspected datasheet."
                 }
             },
             "maxCapacityT": {
@@ -268,7 +268,7 @@
                     "document": "Potain MCT 85 F5 Data Sheet, FEM 1.001-A3 (Manitowoc, Ref. 02D_FEM1001mt_MCT85F5_2026_05-0)",
                     "page": 2,
                     "section": "Mast - reactions / P12D",
-                    "note": "PDF page 2. The P12D mast table gives a height under hook of 41.6 m for jib lengths 20-40 m and 40.1 m for 45-52 m; the catalogue's 30 m default jib uses 41.6 m. The same drawing labels a 3.8 m base width. The height under hook is not a freestanding-height limit; no freestanding height is stated in the inspected datasheet."
+                    "note": "PDF page 2. The P12D mast table gives a height under hook of 41.6 m for jib lengths 20-40 m and 40.1 m for 45-52 m; the catalogue's 30 m default jib uses 41.6 m. The ZF 12A drawing on the same page labels a 3.8 m base width. The height under hook is not a freestanding-height limit; no freestanding height is stated in the inspected datasheet."
                 }
             },
             "maxCapacityT": {
@@ -2026,7 +2026,7 @@
                     "document": "JASO J438PA.2R Data Sheet, EN 14439 C25 (JASO, 30/05/2025)",
                     "page": 6,
                     "section": "Packing list",
-                    "note": "PDF page 6 (the packing list continues on p. 7). Local source PDF: plugins/tower-planner/docs/J438PA.2R_EN-14439-C25_LB-FT_HT21201101.pdf. The 'Counterjib + Luffing mechanisms + Reeving block + Auxiliary jib' line has L 21.7 ft, A 7.8 ft, H 9.1 ft and P/W 45310 lb. It is a combined transport package, not an individual erection component; it is recorded in combinedTransportPackage and is not used as the heaviest erection lift."
+                    "note": "PDF page 6 (the packing list continues on p. 7). Local source PDF: plugins/tower-planner/docs/J438PA.2R_EN-14439-C25_LB-FT_HT21201101.pdf. The 'Counterjib + Mechanisms + Reeving block + Auxiliary jib' line has L 21.7 ft, A 7.8 ft, H 9.1 ft and P/W 45310 lb. It is a combined transport package, not an individual erection component; it is recorded in combinedTransportPackage and is not used as the heaviest erection lift."
                 }
             },
             "maxCapacityT": {
@@ -2263,10 +2263,10 @@
             },
             "heaviestErectionComponent": {
                 "kind": "notStated",
-                "reason": "The pp. 6-7 packing list gives transport package masses, not an erection-component schedule. The heaviest line is the 45310 lb (20.5523 t) combined counter-jib + luffing mechanisms + reeving block + auxiliary jib package, which is recorded separately as a combined transport package. No individual component mass is published, so the heaviest erection lift cannot be derived from this document."
+                "reason": "The pp. 6-7 packing list gives transport package masses, not an erection-component schedule. The heaviest line is the 45310 lb (20.5523 t) combined counter-jib + mechanisms + reeving block + auxiliary jib package, which is recorded separately as a combined transport package. No individual component mass is published, so the heaviest erection lift cannot be derived from this document."
             },
             "combinedTransportPackage": {
-                "name": "Counter-jib + luffing mechanisms + reeving block + auxiliary jib",
+                "name": "Counter-jib + mechanisms + reeving block + auxiliary jib",
                 "massT": {
                     "value": 20.5522702847,
                     "provenance": {
@@ -2302,7 +2302,7 @@
                     "document": "JASO J438PA.2R Data Sheet, EN 14439 C25 (JASO, 30/05/2025)",
                     "page": 6,
                     "section": "Packing list",
-                    "note": "PDF page 6 (the packing list continues on p. 7). Local source PDF: plugins/tower-planner/docs/J438PA.2R_EN-14439-C25_LB-FT_HT21201101.pdf. The 'Counterjib + Luffing mechanisms + Reeving block + Auxiliary jib' line has L 21.7 ft, A 7.8 ft, H 9.1 ft and P/W 45310 lb. It is a combined transport package, not an individual erection component; it is recorded in combinedTransportPackage and is not used as the heaviest erection lift."
+                    "note": "PDF page 6 (the packing list continues on p. 7). Local source PDF: plugins/tower-planner/docs/J438PA.2R_EN-14439-C25_LB-FT_HT21201101.pdf. The 'Counterjib + Mechanisms + Reeving block + Auxiliary jib' line has L 21.7 ft, A 7.8 ft, H 9.1 ft and P/W 45310 lb. It is a combined transport package, not an individual erection component; it is recorded in combinedTransportPackage and is not used as the heaviest erection lift."
                 }
             },
             "maxCapacityT": {
@@ -2539,10 +2539,10 @@
             },
             "heaviestErectionComponent": {
                 "kind": "notStated",
-                "reason": "The pp. 6-7 packing list gives transport package masses, not an erection-component schedule. The heaviest line is the 45310 lb (20.5523 t) combined counter-jib + luffing mechanisms + reeving block + auxiliary jib package, which is recorded separately as a combined transport package. No individual component mass is published, so the heaviest erection lift cannot be derived from this document."
+                "reason": "The pp. 6-7 packing list gives transport package masses, not an erection-component schedule. The heaviest line is the 45310 lb (20.5523 t) combined counter-jib + mechanisms + reeving block + auxiliary jib package, which is recorded separately as a combined transport package. No individual component mass is published, so the heaviest erection lift cannot be derived from this document."
             },
             "combinedTransportPackage": {
-                "name": "Counter-jib + luffing mechanisms + reeving block + auxiliary jib",
+                "name": "Counter-jib + mechanisms + reeving block + auxiliary jib",
                 "massT": {
                     "value": 20.5522702847,
                     "provenance": {
