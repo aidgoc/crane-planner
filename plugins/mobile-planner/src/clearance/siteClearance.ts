@@ -424,6 +424,8 @@ export function isRedFlag(result: ObstacleClearanceResult | null | undefined): b
  * Rules:
  *  - clearanceLimitM must be a non-negative finite number (>= 0).
  *    Throws RangeError on NaN, Infinity, or negative values to prevent false SAFE.
+ *  - minDistanceM must be a finite number >= 0. Throws RangeError on NaN, Infinity
+ *    or negative values (a NaN distance would otherwise compare false and give SAFE).
  *  - isCollision || isTouching → CRITICAL
  *  - minDistanceM < limitM → WARNING
  *  - minDistanceM >= limitM → SAFE
@@ -435,6 +437,12 @@ export function statusFor(
     limitM: number,
 ): ObstacleClearanceResult["status"] {
     assertClearanceLimit("statusFor", limitM);
+    if (!Number.isFinite(minDistanceM) || minDistanceM < 0) {
+        throw new RangeError(
+            `statusFor: minDistanceM must be a finite number >= 0 (got ${minDistanceM}). ` +
+                `A bad distance must never be classified SAFE.`,
+        );
+    }
     if (isCollision || isTouching) return "CRITICAL";
     if (minDistanceM < limitM) return "WARNING";
     return "SAFE";

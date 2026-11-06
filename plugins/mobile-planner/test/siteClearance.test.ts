@@ -276,6 +276,19 @@ describe("Task M6: statusToColour / isRedFlag — BACKLOG M6 red-highlight rule"
 });
 
 // ===========================================================================
+describe("Task M6: statusFor — minDistanceM validation (safety must-fix)", () => {
+    it("throws RangeError for NaN, Infinity and negative distance (never SAFE)", () => {
+        expect(() => statusFor(Number.NaN, false, false, 2.0)).toThrow(RangeError);
+        expect(() => statusFor(Number.POSITIVE_INFINITY, false, false, 2.0)).toThrow(RangeError);
+        expect(() => statusFor(-0.5, false, false, 2.0)).toThrow(RangeError);
+        expect(() => statusFor(Number.NaN, true, false, 2.0)).toThrow(RangeError);
+    });
+    it("still accepts distance 0 and normal values", () => {
+        expect(statusFor(0, false, false, 2.0)).toBe("WARNING");
+        expect(statusFor(2.0, false, false, 2.0)).toBe("SAFE");
+    });
+});
+
 describe("Task M6: statusFor — clearanceLimitM validation (safety must-fix)", () => {
     test("clearanceLimitM = NaN throws RangeError — prevents false SAFE", () => {
         expect(() => statusFor(5.0, false, false, Number.NaN)).toThrow(RangeError);
