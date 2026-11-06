@@ -33,7 +33,7 @@ const TowerPlannerPlugin: Plugin = {
             name: "Tower Planner",
             content:
                 "The \u201cTower Pick Check\u201d button in the Plugin tab opens a sample pick list for the selected catalogue crane (Potain MCT 88 or Potain MCT 85 F5). It shows per-pick capacity, utilisation and PASS/FAIL using the sourced catalogue. " +
-                "The \u201cPlace Tower Crane\u201d button in the Manager tab places and moves a tower crane, sets INDICATIVE min/max hook radius and counter-jib radius, rotates the jib, and drags the mast. The 20 m base exclusion radius is fixed. Rings and results update without a Calculate step. Planning aid, not a certified lift plan.",
+                "The \u201cPlace Tower Crane\u201d button in the Manager tab places and moves a tower crane, sets INDICATIVE min/max hook radius and counter-jib radius, rotates the jib, and drags the mast. The INDICATIVE 20 m base exclusion radius is fixed. Rings and results update without a Calculate step. Planning aid, not a certified lift plan.",
         },
     ],
     i18nResources: [en],

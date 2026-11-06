@@ -1,7 +1,7 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { DEFAULT_VELOCITY_LIMITS, type VelocityLimits, validateVelocityLimits } from "./velocityLimits";
+import { DEFAULT_VELOCITY_LIMITS, type VelocityLimits } from "./velocityLimits";
 
 /**
  * Clamps a value between min and max.
@@ -164,6 +164,9 @@ export function updateTrolley(
 /**
  * Updates slew angle based on direction and elapsed time.
  * Handles angular wraparound and optional angle restrictions.
+ * For cross-zero ranges, the candidate angle is normalized before checking.
+ * For normal ranges, the raw angle is clamped before normalization to prevent
+ * wrapping through the forbidden zone.
  */
 export function updateSlew(
     slew: SlewState,
@@ -180,17 +183,31 @@ export function updateSlew(
         const rangeCrossesZero = min > max;
 
         if (rangeCrossesZero) {
-            if (direction === "cw") {
-                if (newAngle > max && newAngle < min) newAngle = max;
-            } else {
-                if (newAngle < min && newAngle > max) newAngle = min;
+            // Range crosses 0° (e.g., 300° to 60°).
+            // Allowed: [min, 360) U [0, max]. Forbidden: (max, min).
+            // Normalize first, then check if in forbidden range.
+            newAngle = normalizeAngleDeg(newAngle);
+            if (newAngle > max && newAngle < min) {
+                // Inside forbidden range — clamp to nearest boundary
+                // Distance to max boundary (going backward): (newAngle - max + 360) % 360
+                // Distance to min boundary (going forward): (min - newAngle + 360) % 360
+                const distToMax = (newAngle - max + 360) % 360;
+                const distToMin = (min - newAngle + 360) % 360;
+                newAngle = distToMax < distToMin ? max : min;
             }
         } else {
+            // Normal range (min < max, doesn't cross 0).
+            // Allowed: [min, max]. Clamp raw angle before normalization
+            // to prevent wrapping through forbidden zone.
             newAngle = clamp(newAngle, min, max);
+            newAngle = normalizeAngleDeg(newAngle);
         }
+    } else {
+        // No restrictions - just normalize
+        newAngle = normalizeAngleDeg(newAngle);
     }
 
-    return { ...slew, angleDeg: normalizeAngleDeg(newAngle) };
+    return { ...slew, angleDeg: newAngle };
 }
 
 /**
@@ -205,7 +222,10 @@ export function createDefaultCraneSimulationState(
     },
     velocityLimits?: VelocityLimits,
 ): CraneSimulationState {
-    const maxHookHeightM = craneConfig.mastHeightM - 1.5; // hook block height ~1.5m
+    // INDICATIVE: Hook block height deduction of 1.5 m is an assumption.
+    // Real values must be sourced from manufacturer documentation for each crane model.
+    const hookBlockHeightM = 1.5; // INDICATIVE
+    const maxHookHeightM = craneConfig.mastHeightM - hookBlockHeightM;
 
     return {
         hoist: createHoistState(0, maxHookHeightM, maxHookHeightM), // start at max height

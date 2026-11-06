@@ -3,15 +3,16 @@
 
 import {
     type CraneSimulationState,
-    type HoistState,
+    clamp,
     normalizeAngleDeg,
     type SimulationState,
     type SimulationStatus,
-    type SlewState,
-    type TrolleyState,
+    updateHoist,
+    updateSlew,
+    updateTrolley,
     type VelocityLimits,
+    validateVelocityLimits,
 } from "./simulationState";
-import { DEFAULT_VELOCITY_LIMITS, validateVelocityLimits } from "./velocityLimits";
 
 /**
  * Motion command types for the three crane motions.
@@ -66,88 +67,6 @@ function validateTimeStep(dtMs: number, config: MotionControllerConfig): string 
 }
 
 /**
- * Clamps a value between min and max.
- */
-function clamp(value: number, min: number, max: number): number {
-    return Math.max(min, Math.min(max, value));
-}
-
-/**
- * Updates hoist position based on direction and elapsed time.
- */
-function updateHoist(
-    hoist: HoistState,
-    direction: "up" | "down",
-    velocityLimit: number,
-    dtSeconds: number,
-): HoistState {
-    const delta = velocityLimit * dtSeconds;
-    const newHeight = direction === "up" ? hoist.heightM + delta : hoist.heightM - delta;
-    const clampedHeight = clamp(newHeight, hoist.minHeightM, hoist.maxHeightM);
-    return { ...hoist, heightM: clampedHeight };
-}
-
-/**
- * Updates trolley position based on direction and elapsed time.
- */
-function updateTrolley(
-    trolley: TrolleyState,
-    direction: "in" | "out",
-    velocityLimit: number,
-    dtSeconds: number,
-): TrolleyState {
-    const delta = velocityLimit * dtSeconds;
-    // "in" means moving toward mast (decreasing radius), "out" means away (increasing radius)
-    const newRadius = direction === "in" ? trolley.radiusM - delta : trolley.radiusM + delta;
-    const clampedRadius = clamp(newRadius, trolley.minRadiusM, trolley.maxRadiusM);
-    return { ...trolley, radiusM: clampedRadius };
-}
-
-/**
- * Updates slew angle based on direction and elapsed time.
- * Handles angular wraparound and optional angle restrictions.
- */
-function updateSlew(
-    slew: SlewState,
-    direction: "cw" | "ccw",
-    velocityLimit: number,
-    dtSeconds: number,
-): SlewState {
-    const delta = velocityLimit * dtSeconds;
-    let newAngle = direction === "cw" ? slew.angleDeg + delta : slew.angleDeg - delta;
-
-    // Apply angle restrictions if configured
-    if (slew.minAngleDeg !== undefined && slew.maxAngleDeg !== undefined) {
-        // Handle restricted range (e.g., 30° to 150°)
-        const min = normalizeAngleDeg(slew.minAngleDeg);
-        const max = normalizeAngleDeg(slew.maxAngleDeg);
-
-        // Check if the range crosses 0°
-        const rangeCrossesZero = min > max;
-
-        if (rangeCrossesZero) {
-            // Range is e.g., 300° to 60° (crosses 0)
-            if (direction === "cw") {
-                // Moving CW from max toward min
-                if (newAngle > max && newAngle < min) {
-                    newAngle = max;
-                }
-            } else {
-                // Moving CCW from min toward max
-                if (newAngle < min && newAngle > max) {
-                    newAngle = min;
-                }
-            }
-        } else {
-            // Normal range (min < max, doesn't cross 0)
-            newAngle = clamp(newAngle, min, max);
-        }
-    }
-
-    return { ...slew, angleDeg: normalizeAngleDeg(newAngle) };
-}
-
-/**
  * Main motion controller class.
  * Handles time-step based updates for hoist, trolley, and slew motions.
  */
@@ -185,19 +104,28 @@ export class MotionController {
 
     /**
      * Starts the simulation.
+     * Uses relative simulation time (0-based). If resuming from paused,
+     * the accumulated time is preserved.
      */
     start(): void {
-        if (this.state.status === "idle" || this.state.status === "paused") {
+        if (this.state.status === "idle") {
             this.state = {
                 ...this.state,
                 status: "running",
-                lastUpdateTimeMs: Date.now(),
+                lastUpdateTimeMs: 0,
+            };
+        } else if (this.state.status === "paused") {
+            this.state = {
+                ...this.state,
+                status: "running",
+                // Preserve accumulated simulation time when resuming
             };
         }
     }
 
     /**
      * Pauses the simulation.
+     * Preserves accumulated simulation time.
      */
     pause(): void {
         if (this.state.status === "running") {
@@ -210,19 +138,20 @@ export class MotionController {
 
     /**
      * Resumes the simulation from paused state.
+     * Preserves accumulated simulation time.
      */
     resume(): void {
         if (this.state.status === "paused") {
             this.state = {
                 ...this.state,
                 status: "running",
-                lastUpdateTimeMs: Date.now(),
             };
         }
     }
 
     /**
      * Resets the simulation to initial state.
+     * Resets accumulated simulation time to 0.
      */
     reset(initialState?: CraneSimulationState): void {
         if (initialState) {
@@ -242,45 +171,6 @@ export class MotionController {
                 lastUpdateTimeMs: 0,
             };
         }
-    }
-
-    /**
-     * Updates the simulation by a time step.
-     * Returns the new state and whether any position changed.
-     */
-    update(dtMs: number): UpdateResult {
-        const validationError = validateTimeStep(dtMs, this.config);
-        if (validationError) {
-            throw new Error(validationError);
-        }
-
-        if (this.state.status !== "running" || dtMs <= 0) {
-            return { state: this.getState(), changed: false };
-        }
-
-        const dtSeconds = dtMs / 1000;
-        const changed = false;
-        const newHoist = this.state.hoist;
-        const newTrolley = this.state.trolley;
-        const newSlew = this.state.slew;
-
-        // The actual motion commands are applied externally via applyCommand
-        // This update() just advances time for currently active motions
-        // In a real implementation, active commands would be tracked
-
-        // For now, this is a placeholder - actual motion is driven by applyCommand
-        // which applies the motion for the given time step
-
-        const newState: SimulationState = {
-            ...this.state,
-            hoist: newHoist,
-            trolley: newTrolley,
-            slew: newSlew,
-            lastUpdateTimeMs: this.state.lastUpdateTimeMs + dtMs,
-        };
-
-        this.state = newState;
-        return { state: this.getState(), changed };
     }
 
     /**
@@ -453,6 +343,8 @@ export class MotionController {
 
     /**
      * Sets a new slew angle directly.
+     * Applies angle restrictions if configured. If the angle falls within
+     * a restricted (forbidden) sector, it is clamped to the nearest boundary.
      */
     setSlewAngle(angleDeg: number): void {
         const normalized = normalizeAngleDeg(angleDeg);
@@ -464,13 +356,20 @@ export class MotionController {
             const rangeCrossesZero = min > max;
 
             if (rangeCrossesZero) {
-                if (!(normalized >= max && normalized <= min)) {
-                    // Outside restricted range, clamp to nearest boundary
-                    const distToMin = (normalized - min + 360) % 360;
-                    const distToMax = (max - normalized + 360) % 360;
-                    finalAngle = distToMin < distToMax ? min : max;
+                // Range crosses 0° (e.g., 300° to 60°).
+                // Allowed: [min, 360) U [0, max]. Forbidden: (max, min).
+                // If normalized is in forbidden range, clamp to nearest boundary.
+                if (normalized > max && normalized < min) {
+                    // Inside forbidden range — clamp to nearest boundary
+                    // Distance to max boundary (going backward): (normalized - max + 360) % 360
+                    // Distance to min boundary (going forward): (min - normalized + 360) % 360
+                    const distToMax = (normalized - max + 360) % 360;
+                    const distToMin = (min - normalized + 360) % 360;
+                    finalAngle = distToMax < distToMin ? max : min;
                 }
             } else {
+                // Normal range (min < max, doesn't cross 0).
+                // Allowed: [min, max]. Forbidden: outside this range.
                 finalAngle = clamp(normalized, min, max);
             }
         }
