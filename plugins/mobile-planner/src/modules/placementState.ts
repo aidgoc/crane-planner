@@ -119,7 +119,7 @@ export interface ObstacleClearanceResult {
     readonly boomTipRadiusM: number;
     /** Horizontal gap = distance - requiredClearance. Positive = safe margin; negative = violation. */
     readonly marginM: number;
-    readonly status: "PASS" | "FAIL";
+    readonly status: "PASS" | "FAIL" | "NOT_CHECKED";
     /** True if boom physically intersects or penetrates obstacle volume/hazard plane. */
     readonly isCollision: boolean;
 }
@@ -418,6 +418,7 @@ export function computePlacement(
     const obstacleClearances: ObstacleClearanceResult[] = obstacles.map((obs) => {
         let distanceM: number;
         let isCollision = false;
+        let hasGeometry = true;
 
         if (obs.polygon && obs.polygon.length >= 3) {
             // Polygon footprint obstacle (e.g. Tower A building)
@@ -426,7 +427,7 @@ export function computePlacement(
                 distanceM = 0;
                 isCollision = true;
             }
-        } else if (obs.xLineM !== undefined) {
+        } else if (obs.xLineM !== undefined && Number.isFinite(obs.xLineM)) {
             // Infinite vertical plane hazard (e.g. 22 kV power line at x = -9 m)
             const minBoomX = Math.min(boomFootX, boomTipX);
             const maxBoomX = Math.max(boomFootX, boomTipX);
@@ -436,15 +437,26 @@ export function computePlacement(
             } else {
                 distanceM = Math.min(Math.abs(boomFootX - obs.xLineM), Math.abs(boomTipX - obs.xLineM));
             }
-        } else if (obs.xM !== undefined && obs.yM !== undefined) {
+        } else if (
+            obs.xM !== undefined &&
+            obs.yM !== undefined &&
+            Number.isFinite(obs.xM) &&
+            Number.isFinite(obs.yM)
+        ) {
             // Point obstacle
             distanceM = distancePointToSegment(obs.xM, obs.yM, boomFootX, boomFootY, boomTipX, boomTipY);
         } else {
-            distanceM = Infinity;
+            // No recognizable geometry (no polygon >= 3 pts, no finite xLineM, no finite point xM/yM)
+            hasGeometry = false;
+            distanceM = Number.POSITIVE_INFINITY;
         }
 
-        const marginM = distanceM - obs.requiredClearanceM;
-        const status = marginM >= 0 && !isCollision ? ("PASS" as const) : ("FAIL" as const);
+        const marginM = hasGeometry ? distanceM - obs.requiredClearanceM : Number.NaN;
+        const status: "PASS" | "FAIL" | "NOT_CHECKED" = !hasGeometry
+            ? "NOT_CHECKED"
+            : marginM >= 0 && !isCollision
+              ? "PASS"
+              : "FAIL";
 
         return {
             label: obs.label,
@@ -462,7 +474,9 @@ export function computePlacement(
             ? "NOT_CHECKED"
             : obstacleClearances.some((c) => c.status === "FAIL")
               ? "FAIL"
-              : "PASS";
+              : obstacleClearances.some((c) => c.status === "NOT_CHECKED")
+                ? "NOT_CHECKED"
+                : "PASS";
 
     // --- 8. Overall Safety Verdict ---
     const incompleteReasons: string[] = [];
@@ -473,7 +487,16 @@ export function computePlacement(
         incompleteReasons.push("Ground bearing not checked (allowable bearing required)");
     }
     if (clearanceStatus === "NOT_CHECKED") {
-        incompleteReasons.push("Clearance not checked (no obstacles provided)");
+        if (obstacles.length === 0) {
+            incompleteReasons.push("Clearance not checked (no obstacles provided)");
+        } else {
+            const unshaped = obstacleClearances.filter((c) => c.status === "NOT_CHECKED");
+            for (const u of unshaped) {
+                incompleteReasons.push(
+                    `Clearance not checked for "${u.label}" (no geometry: polygon, xLineM, or point required)`,
+                );
+            }
+        }
     }
 
     let overallVerdict: OverallVerdict;

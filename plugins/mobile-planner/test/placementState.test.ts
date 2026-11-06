@@ -280,6 +280,127 @@ describe("M8 — computePlacement (live wiring)", () => {
     });
 
     // -----------------------------------------------------------------------
+    // 6b. Shapeless Obstacle handling (Reviewer Point: no shape must NOT pass)
+    // -----------------------------------------------------------------------
+
+    /**
+     * HAND CALCULATION (Reviewer final review case):
+     * Crane placed at (0, 0), allowableBearing = 100 t/m² (PASS), capacity = PASS.
+     * Obstacle provided with label "Ghost Obstacle", requiredClearanceM = 2.0,
+     * but NO geometry: polygon = undefined, xLineM = undefined, xM = undefined, yM = undefined.
+     *
+     * Expected behavior:
+     * - Must NOT assign distance Infinity and status "PASS".
+     * - Obstacle status must be "NOT_CHECKED" (margin = NaN, distance = Infinity).
+     * - clearanceStatus must be "NOT_CHECKED".
+     * - overallVerdict must be "INCOMPLETE", allPass = false (NEVER "ALL PASS").
+     * - incompleteReasons must explain that "Ghost Obstacle" has no geometry.
+     */
+    test("obstacle with no shape (no polygon, no xLineM, no point) returns NOT_CHECKED and INCOMPLETE (not ALL PASS)", () => {
+        const shapelessObstacle: SiteObstacle = {
+            label: "Ghost Obstacle",
+            requiredClearanceM: 2.0,
+        };
+
+        const r = computePlacement(makeInput({ allowableBearingT_M2: 100 }), [shapelessObstacle]);
+
+        expect(r.capacityStatus).toBe("PASS");
+        expect(r.bearingStatus).toBe("PASS");
+        expect(r.obstacleClearances).toHaveLength(1);
+        expect(r.obstacleClearances[0].status).toBe("NOT_CHECKED");
+        expect(Number.isNaN(r.obstacleClearances[0].marginM)).toBe(true);
+        expect(r.clearanceStatus).toBe("NOT_CHECKED");
+        expect(r.overallVerdict).toBe("INCOMPLETE");
+        expect(r.allPass).toBe(false);
+        expect(r.incompleteReasons.some((reason) => reason.includes("Ghost Obstacle"))).toBe(true);
+    });
+
+    /**
+     * HAND CALCULATION:
+     * Polygon with < 3 vertices cannot form a closed 2D area (e.g. 2 points is a line segment).
+     * Treated as missing/unrecognized geometry: status = "NOT_CHECKED", overall = "INCOMPLETE".
+     */
+    test("obstacle with degenerate polygon (<3 vertices) returns NOT_CHECKED and INCOMPLETE", () => {
+        const degenerateObstacle: SiteObstacle = {
+            label: "Degenerate Line",
+            polygon: [
+                [0, 0],
+                [10, 0],
+            ],
+            requiredClearanceM: 2.0,
+        };
+
+        const r = computePlacement(makeInput({ allowableBearingT_M2: 100 }), [degenerateObstacle]);
+
+        expect(r.obstacleClearances[0].status).toBe("NOT_CHECKED");
+        expect(r.clearanceStatus).toBe("NOT_CHECKED");
+        expect(r.overallVerdict).toBe("INCOMPLETE");
+        expect(r.allPass).toBe(false);
+    });
+
+    /**
+     * HAND CALCULATION:
+     * Mixed scenario: Safe obstacle (distant point at (60, 0), clearance margin +38.2 m -> PASS)
+     * plus a shapeless obstacle.
+     * Even though obstacle 1 passes and all other checks pass, the presence of an unchecked
+     * shapeless obstacle must prevent "ALL PASS" from being reached.
+     * Overall verdict MUST be "INCOMPLETE".
+     */
+    test("safe obstacle combined with shapeless obstacle returns INCOMPLETE (cannot produce ALL PASS)", () => {
+        const safeObstacle: SiteObstacle = {
+            label: "Safe Point",
+            xM: 60,
+            yM: 0,
+            requiredClearanceM: 2.0,
+        };
+        const shapelessObstacle: SiteObstacle = {
+            label: "Unshaped Boundary",
+            requiredClearanceM: 3.0,
+        };
+
+        const r = computePlacement(makeInput({ allowableBearingT_M2: 100 }), [
+            safeObstacle,
+            shapelessObstacle,
+        ]);
+
+        expect(r.obstacleClearances[0].status).toBe("PASS");
+        expect(r.obstacleClearances[1].status).toBe("NOT_CHECKED");
+        expect(r.clearanceStatus).toBe("NOT_CHECKED");
+        expect(r.overallVerdict).toBe("INCOMPLETE");
+        expect(r.allPass).toBe(false);
+    });
+
+    /**
+     * HAND CALCULATION:
+     * Collision priority: If one obstacle is in collision/violation (FAIL) and another is shapeless (NOT_CHECKED),
+     * the safety verdict MUST be "FAIL", not "INCOMPLETE".
+     * Crane at (0, 0), boom tip at (19.8, 0) cuts across plane xLineM = 10 m.
+     * Collision is detected (distance = 0, isCollision = true) -> clearanceStatus = "FAIL", overallVerdict = "FAIL".
+     */
+    test("colliding obstacle combined with shapeless obstacle still returns FAIL", () => {
+        const collidingObstacle: SiteObstacle = {
+            label: "Power Line",
+            xLineM: 10,
+            requiredClearanceM: 6.0,
+        };
+        const shapelessObstacle: SiteObstacle = {
+            label: "Unshaped Boundary",
+            requiredClearanceM: 3.0,
+        };
+
+        const r = computePlacement(makeInput({ allowableBearingT_M2: 100 }), [
+            collidingObstacle,
+            shapelessObstacle,
+        ]);
+
+        expect(r.obstacleClearances[0].status).toBe("FAIL");
+        expect(r.obstacleClearances[1].status).toBe("NOT_CHECKED");
+        expect(r.clearanceStatus).toBe("FAIL");
+        expect(r.overallVerdict).toBe("FAIL");
+        expect(r.allPass).toBe(false);
+    });
+
+    // -----------------------------------------------------------------------
     // 7. Input Validation (No silent defaults or crashes)
     // -----------------------------------------------------------------------
 

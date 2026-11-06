@@ -558,9 +558,15 @@ export class MobileCranePlacementPanel {
         } else {
             for (const c of r.obstacleClearances) {
                 const row = resultRow(c.label);
-                const prefix = c.isCollision ? "COLLISION (0 m) " : `${fmt(c.marginM)} m margin `;
+                const prefix = c.isCollision
+                    ? "COLLISION (0 m) "
+                    : c.status === "NOT_CHECKED"
+                      ? "NO GEOMETRY "
+                      : `${fmt(c.marginM)} m margin `;
                 row.val.textContent = prefix;
-                row.val.appendChild(badge(c.status, c.status === "PASS" ? "pass" : "fail"));
+                row.val.appendChild(
+                    badge(c.status, c.status === "PASS" ? "pass" : c.status === "FAIL" ? "fail" : "warn"),
+                );
                 this.obstacleContainer.appendChild(row.el);
             }
         }
