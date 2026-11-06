@@ -77,8 +77,11 @@ describe("capacityAt", () => {
         // 5 m and the corner itself are both on the flat 5 t part of the curve.
         expect(capacityAt(MCT88, 30, 5)).toBeCloseTo(5, 10);
         expect(capacityAt(MCT88, 30, 16.2)).toBeCloseTo(5, 10);
-        expect(capacityAt(MCT88, 30, 0)).toBeCloseTo(5, 10);
-        expect(capacityAt(MCT88, 30, -1)).toBeCloseTo(5, 10);
+    });
+
+    test("returns null for zero or negative radius on a tip-load model", () => {
+        expect(capacityAt(MCT88, 30, 0)).toBeNull();
+        expect(capacityAt(MCT88, 30, -1)).toBeNull();
     });
 
     test("uses the two-piece curve beyond the corner", () => {
@@ -106,7 +109,8 @@ describe("capacityAt", () => {
         // 52 m boundary: 1.15 t × 52 m = 59.8 t·m; 59.8 / 52 = 1.15 t.
         expect(capacityAt(MCT88, 52, 52)).toBeCloseTo(1.15, 10);
         expect(capacityAt(MCT88, 52, 52, 20)).toBeCloseTo(0.92, 10);
-        expect(capacityAt(MCT88, 52, 0)).toBeCloseTo(5, 10);
+        // Zero radius is invalid even at the maximum jib.
+        expect(capacityAt(MCT88, 52, 0)).toBeNull();
         expect(capacityAt(MCT88, 52.000001, 30)).toBeNull();
         expect(capacityAt(MCT88, 53.1, 30)).toBeNull();
         expect(capacityAt(MCT88, 100, 30)).toBeNull();
