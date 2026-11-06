@@ -13,6 +13,7 @@ import {
     type I18nKeys,
     type IApplication,
     type ICommand,
+    type INode,
     PubSub,
 } from "@chili3d/core";
 import { BuildingBodyNode } from "../body/buildingBody";
@@ -57,7 +58,37 @@ export class LoadSampleSiteCommand implements ICommand {
         // 2. Set active site project in shared store
         setActiveSiteProject(siteProject);
 
-        // 3. Create and add 3D building solids to Document's ModelManager
+        // 3. Remove any existing sample site BuildingBodyNodes to prevent duplicate geometry on multiple clicks
+        const existingNodes: INode[] = [];
+        if (typeof doc.modelManager.findNodes === "function") {
+            const found = doc.modelManager.findNodes(
+                (n) =>
+                    n instanceof BuildingBodyNode ||
+                    Boolean(n.name && Object.keys(siteProject.buildings).includes(n.name)),
+            );
+            if (Array.isArray(found)) {
+                existingNodes.push(...found);
+            }
+        }
+        if (existingNodes.length === 0 && doc.modelManager.rootNode) {
+            let current = doc.modelManager.rootNode.firstChild;
+            while (current) {
+                if (
+                    current instanceof BuildingBodyNode ||
+                    (current.name && Object.keys(siteProject.buildings).includes(current.name))
+                ) {
+                    existingNodes.push(current);
+                }
+                current = (current as { nextSibling?: INode }).nextSibling;
+            }
+        }
+        for (const oldNode of existingNodes) {
+            if (oldNode.parent && typeof oldNode.parent.remove === "function") {
+                oldNode.parent.remove(oldNode);
+            }
+        }
+
+        // 4. Create and add 3D building solids to Document's ModelManager
         const nodesToAdd: BuildingBodyNode[] = [];
         for (const [key, building] of Object.entries(siteProject.buildings)) {
             if (building.height_m > 0 && building.polygon.length >= 3) {
@@ -76,7 +107,7 @@ export class LoadSampleSiteCommand implements ICommand {
             doc.modelManager.addNode(...nodesToAdd);
         }
 
-        // 4. Notify user with planning disclaimer
+        // 5. Notify user with planning disclaimer
         PubSub.default.pub("showToast", "site.model.sampleLoaded" as I18nKeys);
     }
 }

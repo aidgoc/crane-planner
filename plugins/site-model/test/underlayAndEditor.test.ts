@@ -98,6 +98,75 @@ describe("DGOC Site Model — Check-in 2 (S5 & S6)", () => {
             expect(buffer[3]).toBe(0x47);
         });
 
+        /**
+         * HAND CALCULATION (Real Sample PNG Scale Verification):
+         * Image: public/sample-site/sample-site.png (859 x 720 px)
+         * Scale bar: ends at u = 636 and u = 728 px -> dx = 92 px for 20.0 m.
+         * Metres per pixel = 20.0 / 92 ≈ 0.2173913 m/px (≈ 4.6 px/m).
+         * Tower A width: x = 292 to x = 475 px -> 183 px.
+         * Measured Tower A width = 183 * (20 / 92) = 39.7826 m.
+         * Error from design width 40.0 m = |39.7826 - 40.0| / 40.0 = 0.54 % (≤ 1.0 % acceptance criterion).
+         * Tower A depth: y = 345 to y = 446 px -> 101 px.
+         * Measured Tower A depth = 101 * (20 / 92) = 21.9565 m.
+         * Error from design depth 22.0 m = |21.9565 - 22.0| / 22.0 = 0.20 % (≤ 1.0 %).
+         */
+        test("calibrates on real sample-site.png 0-20 m scale bar and measures Tower A within 1 percent", () => {
+            const barStart = { u: 636, v: 660 };
+            const barEnd = { u: 728, v: 660 };
+            const knownDistanceM = 20.0;
+
+            const calibRes = calibrateImageScale(barStart, barEnd, knownDistanceM);
+            expect(calibRes.isOk).toBe(true);
+            if (!calibRes.isOk) return;
+
+            const calib = calibRes.value;
+            expect(calib.pixelDistance).toBe(92);
+            expect(calib.metresPerPixel).toBeCloseTo(20 / 92, 4);
+
+            // Measure Tower A width on plan (x = 292 to x = 475 px -> 183 px):
+            const towerALeft = { u: 292, v: 400 };
+            const towerARight = { u: 475, v: 400 };
+            const measuredWidthM = measureUnderlayDistanceM(towerALeft, towerARight, calib);
+
+            expect(measuredWidthM).toBeCloseTo(39.78, 1);
+            const errorPercent = (Math.abs(measuredWidthM - 40.0) / 40.0) * 100;
+            expect(errorPercent).toBeLessThan(1.0); // 0.54% error
+
+            // Measure Tower A depth on plan (y = 345 to y = 446 px -> 101 px):
+            const towerATop = { u: 380, v: 345 };
+            const towerABottom = { u: 380, v: 446 };
+            const measuredDepthM = measureUnderlayDistanceM(towerATop, towerABottom, calib);
+            expect(measuredDepthM).toBeCloseTo(21.96, 1);
+            const depthErrorPercent = (Math.abs(measuredDepthM - 22.0) / 22.0) * 100;
+            expect(depthErrorPercent).toBeLessThan(1.0); // 0.20% error
+        });
+
+        test("transforms pixel to world with counter-clockwise rotation", () => {
+            const calibRes = calibrateImageScale({ u: 0, v: 0 }, { u: 10, v: 0 }, 10.0);
+            expect(calibRes.isOk).toBe(true);
+            if (!calibRes.isOk) return;
+
+            const underlay = createImageUnderlay({
+                id: "rot_test",
+                name: "Rotated Underlay",
+                imageUri: "data:image/png;base64,dummy",
+                widthPx: 500,
+                heightPx: 500,
+                calibration: calibRes.value,
+                originPixel: { u: 100, v: 100 },
+                rotationDeg: 90, // 90° CCW
+            });
+
+            // Pixel 1 unit right of origin: u=101, v=100 (du = 1, dv = 0)
+            // Rotated 90° CCW: worldX = 0, worldY = +1 (North)
+            const ptWorld = pixelToWorldMetres({ u: 101, v: 100 }, underlay);
+            expect(ptWorld.isOk).toBe(true);
+            if (ptWorld.isOk) {
+                expect(ptWorld.value.x).toBeCloseTo(0, 4);
+                expect(ptWorld.value.y).toBeCloseTo(1.0, 4);
+            }
+        });
+
         test("pixelToWorldMetres and worldMetresToPixel round-trip accurately", () => {
             const calibRes = calibrateImageScale({ u: 0, v: 0 }, { u: 1000, v: 0 }, 100.0);
             expect(calibRes.isOk).toBe(true);
@@ -226,6 +295,7 @@ describe("DGOC Site Model — Check-in 2 (S5 & S6)", () => {
                 kind: "building",
                 label: "Proposed Block",
                 polygon: initialPoints,
+                height_m: 10.0,
             });
             expect(featureRes.isOk).toBe(true);
             if (!featureRes.isOk) return;
@@ -329,6 +399,7 @@ describe("DGOC Site Model — Check-in 2 (S5 & S6)", () => {
                     { x: 10, y: 10 },
                     { x: 0, y: 10 },
                 ],
+                height_m: 10.0,
             }).value;
 
             // Insert vertex at (5, 15) between index 2 and index 3 (pentagon with roof peak):
@@ -358,6 +429,7 @@ describe("DGOC Site Model — Check-in 2 (S5 & S6)", () => {
                     { x: 10, y: 0 },
                     { x: 0, y: 10 },
                 ],
+                height_m: 10.0,
             }).value;
             const failRemove = removePolygonVertex(triangle, 0);
             expect(failRemove.isOk).toBe(false);
@@ -390,6 +462,185 @@ describe("DGOC Site Model — Check-in 2 (S5 & S6)", () => {
 
             editor.undo();
             expect(editor.features.length).toBe(1);
+        });
+
+        test("createSiteFeature rejects invalid domain inputs (Point 4)", () => {
+            const validSquare = [
+                { x: 0, y: 0 },
+                { x: 10, y: 0 },
+                { x: 10, y: 10 },
+                { x: 0, y: 10 },
+            ];
+
+            // Building with NaN height:
+            const bldgNan = createSiteFeature({
+                id: "b_nan",
+                kind: "building",
+                label: "NaN Building",
+                polygon: validSquare,
+                height_m: Number.NaN,
+            });
+            expect(bldgNan.isOk).toBe(false);
+
+            // Building with negative height:
+            const bldgNeg = createSiteFeature({
+                id: "b_neg",
+                kind: "building",
+                label: "Neg Building",
+                polygon: validSquare,
+                height_m: -5,
+            });
+            expect(bldgNeg.isOk).toBe(false);
+
+            // Building without height:
+            const bldgMissing = createSiteFeature({
+                id: "b_none",
+                kind: "building",
+                label: "Missing Height",
+                polygon: validSquare,
+            });
+            expect(bldgMissing.isOk).toBe(false);
+
+            // Power line with NaN clearance:
+            const pwrNan = createSiteFeature({
+                id: "p_nan",
+                kind: "power_line",
+                label: "NaN Line",
+                polygon: validSquare,
+                clearance_m: Number.NaN,
+            });
+            expect(pwrNan.isOk).toBe(false);
+
+            // Power line with negative clearance:
+            const pwrNeg = createSiteFeature({
+                id: "p_neg",
+                kind: "power_line",
+                label: "Neg Line",
+                polygon: validSquare,
+                clearance_m: -6,
+            });
+            expect(pwrNeg.isOk).toBe(false);
+
+            // Power line without clearance:
+            const pwrMissing = createSiteFeature({
+                id: "p_none",
+                kind: "power_line",
+                label: "Missing Clearance",
+                polygon: validSquare,
+            });
+            expect(pwrMissing.isOk).toBe(false);
+
+            // Collinear flat polygon (area = 0):
+            const flatPoly = createSiteFeature({
+                id: "flat",
+                kind: "road",
+                label: "Flat Collinear Road",
+                polygon: [
+                    { x: 0, y: 0 },
+                    { x: 5, y: 0 },
+                    { x: 10, y: 0 },
+                ],
+            });
+            expect(flatPoly.isOk).toBe(false);
+            if (!flatPoly.isOk) {
+                expect(flatPoly.error).toContain("area must be strictly greater than 0");
+            }
+        });
+
+        test("editor undo restores previous feature if same ID is added twice (Point 5)", () => {
+            const editor = new SitePolygonEditor();
+            const poly1 = [
+                { x: 0, y: 0 },
+                { x: 5, y: 0 },
+                { x: 5, y: 5 },
+                { x: 0, y: 5 },
+            ];
+            const poly2 = [
+                { x: 0, y: 0 },
+                { x: 10, y: 0 },
+                { x: 10, y: 10 },
+                { x: 0, y: 10 },
+            ];
+
+            const featV1 = createSiteFeature({
+                id: "same_id",
+                kind: "road",
+                label: "Road V1",
+                polygon: poly1,
+            }).value;
+
+            const featV2 = createSiteFeature({
+                id: "same_id",
+                kind: "road",
+                label: "Road V2 (Larger)",
+                polygon: poly2,
+            }).value;
+
+            editor.addFeature(featV1);
+            expect(editor.getFeature("same_id")?.area_m2).toBe(25.0);
+
+            // Overwrite same ID with V2:
+            editor.addFeature(featV2);
+            expect(editor.getFeature("same_id")?.area_m2).toBe(100.0);
+
+            // Undo once: previous feature V1 must be restored (not deleted):
+            const undoRes = editor.undo();
+            expect(undoRes).toBe(true);
+            const restored = editor.getFeature("same_id");
+            expect(restored).toBeDefined();
+            expect(restored?.area_m2).toBe(25.0);
+            expect(restored?.label).toBe("Road V1");
+
+            // Undo again: removes V1:
+            editor.undo();
+            expect(editor.getFeature("same_id")).toBeUndefined();
+        });
+
+        test("editor insertVertex and removeVertex have full undo and redo (Point 5)", () => {
+            const editor = new SitePolygonEditor();
+            const feature = createSiteFeature({
+                id: "bldg_edit",
+                kind: "building",
+                label: "Block",
+                polygon: [
+                    { x: 0, y: 0 },
+                    { x: 10, y: 0 },
+                    { x: 10, y: 10 },
+                    { x: 0, y: 10 },
+                ],
+                height_m: 20.0,
+            }).value;
+
+            editor.addFeature(feature);
+            expect(editor.getFeature("bldg_edit")?.polygon.length).toBe(4);
+            expect(editor.getFeature("bldg_edit")?.area_m2).toBe(100.0);
+
+            // Insert vertex at index 2 (roof peak at 5, 15):
+            const insertRes = editor.insertVertex("bldg_edit", 2, { x: 5, y: 15 });
+            expect(insertRes.isOk).toBe(true);
+            expect(editor.getFeature("bldg_edit")?.polygon.length).toBe(5);
+            expect(editor.getFeature("bldg_edit")?.area_m2).toBe(125.0);
+
+            // Undo insert:
+            editor.undo();
+            expect(editor.getFeature("bldg_edit")?.polygon.length).toBe(4);
+            expect(editor.getFeature("bldg_edit")?.area_m2).toBe(100.0);
+
+            // Redo insert:
+            editor.redo();
+            expect(editor.getFeature("bldg_edit")?.polygon.length).toBe(5);
+            expect(editor.getFeature("bldg_edit")?.area_m2).toBe(125.0);
+
+            // Remove vertex at index 3:
+            const removeRes = editor.removeVertex("bldg_edit", 3);
+            expect(removeRes.isOk).toBe(true);
+            expect(editor.getFeature("bldg_edit")?.polygon.length).toBe(4);
+            expect(editor.getFeature("bldg_edit")?.area_m2).toBe(100.0);
+
+            // Undo remove:
+            editor.undo();
+            expect(editor.getFeature("bldg_edit")?.polygon.length).toBe(5);
+            expect(editor.getFeature("bldg_edit")?.area_m2).toBe(125.0);
         });
     });
 });

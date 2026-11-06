@@ -41,7 +41,7 @@ export interface ImageUnderlay {
     calibration?: ImageCalibration;
     /** Pixel on the image representing the world coordinate origin (0, 0) */
     originPixel?: PixelCoord;
-    /** Rotation of the image in degrees (clockwise) */
+    /** Rotation of the image in degrees (counter-clockwise: positive degrees rotate +X East toward +Y North) */
     rotationDeg?: number;
     opacity: number;
     visible: boolean;

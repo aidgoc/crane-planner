@@ -74,6 +74,12 @@ export class BuildingBodyNode extends ParameterShapeNode {
 
     constructor(options: BuildingBodyNodeOptions) {
         super(options);
+        if (!Number.isFinite(options.heightM) || options.heightM <= 0) {
+            throw new Error(`Height must be a positive number: got ${options.heightM}`);
+        }
+        if (!options.polygon || options.polygon.length < 3) {
+            throw new Error("Footprint polygon must have at least 3 points");
+        }
         this.setPrivateValue("label", options.label ?? options.name ?? "Building");
         this.setPrivateValue("heightM", options.heightM);
         this.setPrivateValue("polygon", options.polygon);

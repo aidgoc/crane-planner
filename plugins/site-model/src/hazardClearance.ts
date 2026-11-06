@@ -28,20 +28,38 @@ export interface PowerLineClearanceResult {
  * clearance zone.
  *
  * NOTE ON DOWNSTREAM APPLICATION:
- * The site-model stores the power line geometry and clearance_m requirement.
+ * This is a simple x-only screening helper (evaluates horizontal X plan distance; wire height
+ * and vertical 3D geometry are not evaluated). For full 3D solid clearance against power lines,
+ * use M6 computeSiteClearance.
+ *
  * Downstream physical evaluation against dynamic crane parts is handled by:
  * - Mobile Planner (M6/M8): checks boom cylinder extrema distance against line corridor.
  * - Tower Planner (T8): checks slew circle buffer against line corridor.
  *
  * @param powerLine - Power line specification from site model.
  * @param xM - Horizontal position X in metres.
- * @param additionalRadiusM - Optional boom or slew radius in metres to test.
+ * @param additionalRadiusM - Optional boom or slew radius in metres to test (must be non-negative).
+ * @throws {RangeError} If xM, additionalRadiusM, or clearance_m is non-finite or negative.
  */
 export function checkPowerLineClearance(
     powerLine: PowerLineZone,
     xM: number,
     additionalRadiusM = 0,
 ): PowerLineClearanceResult {
+    if (!Number.isFinite(xM)) {
+        throw new RangeError(`Power line clearance check: xM must be a finite number, got ${xM}`);
+    }
+    if (!Number.isFinite(additionalRadiusM) || additionalRadiusM < 0) {
+        throw new RangeError(
+            `Power line clearance check: additionalRadiusM must be a non-negative finite number, got ${additionalRadiusM}`,
+        );
+    }
+    if (!Number.isFinite(powerLine.clearance_m) || powerLine.clearance_m < 0) {
+        throw new RangeError(
+            `Power line clearance check: clearance_m must be a non-negative finite number, got ${powerLine.clearance_m}`,
+        );
+    }
+
     const rawDistanceM = Math.abs(xM - powerLine.x_m);
     const distanceM = Math.max(0, rawDistanceM - additionalRadiusM);
     const marginM = distanceM - powerLine.clearance_m;

@@ -49,6 +49,31 @@ export function createSiteFeature(options: {
     }
 
     const area_m2 = calculatePolygonArea(options.polygon);
+    if (!Number.isFinite(area_m2) || area_m2 <= 0) {
+        return Result.err(
+            "Polygon area must be strictly greater than 0 m² (vertices must not be collinear or degenerate).",
+        );
+    }
+
+    if (options.kind === "building") {
+        if (options.height_m === undefined || !Number.isFinite(options.height_m) || options.height_m <= 0) {
+            return Result.err(
+                `Building feature requires a positive finite height_m, got ${options.height_m}.`,
+            );
+        }
+    }
+
+    if (options.kind === "power_line") {
+        if (
+            options.clearance_m === undefined ||
+            !Number.isFinite(options.clearance_m) ||
+            options.clearance_m < 0
+        ) {
+            return Result.err(
+                `Power line feature requires a non-negative finite clearance_m, got ${options.clearance_m}.`,
+            );
+        }
+    }
 
     return Result.ok({
         id: options.id,
@@ -207,15 +232,21 @@ export class SitePolygonEditor {
 
     /**
      * Adds a new feature with undo support.
+     * If a feature with the same ID already exists, undo will safely restore the previous version.
      */
     addFeature(feature: SiteFeature): void {
+        const previous = this._features.get(feature.id);
         const action: EditorAction = {
             name: `Add ${feature.kind} (${feature.id})`,
             execute: () => {
                 this._features.set(feature.id, feature);
             },
             undo: () => {
-                this._features.delete(feature.id);
+                if (previous) {
+                    this._features.set(feature.id, previous);
+                } else {
+                    this._features.delete(feature.id);
+                }
             },
         };
         this.executeAction(action);
@@ -263,6 +294,58 @@ export class SitePolygonEditor {
 
         const action: EditorAction = {
             name: `Move vertex ${vertexIndex} of ${id}`,
+            execute: () => {
+                this._features.set(id, updated);
+            },
+            undo: () => {
+                this._features.set(id, feature);
+            },
+        };
+        this.executeAction(action);
+        return Result.ok(updated);
+    }
+
+    /**
+     * Inserts a vertex into a feature with undo/redo support.
+     */
+    insertVertex(id: string, index: number, vertex: Point2D): Result<SiteFeature, string> {
+        const feature = this._features.get(id);
+        if (!feature) {
+            return Result.err(`Feature '${id}' not found.`);
+        }
+
+        const insertRes = insertPolygonVertex(feature, index, vertex);
+        if (!insertRes.isOk) return insertRes;
+        const updated = insertRes.value;
+
+        const action: EditorAction = {
+            name: `Insert vertex at index ${index} of ${id}`,
+            execute: () => {
+                this._features.set(id, updated);
+            },
+            undo: () => {
+                this._features.set(id, feature);
+            },
+        };
+        this.executeAction(action);
+        return Result.ok(updated);
+    }
+
+    /**
+     * Removes a vertex from a feature with undo/redo support.
+     */
+    removeVertex(id: string, index: number): Result<SiteFeature, string> {
+        const feature = this._features.get(id);
+        if (!feature) {
+            return Result.err(`Feature '${id}' not found.`);
+        }
+
+        const removeRes = removePolygonVertex(feature, index);
+        if (!removeRes.isOk) return removeRes;
+        const updated = removeRes.value;
+
+        const action: EditorAction = {
+            name: `Remove vertex at index ${index} of ${id}`,
             execute: () => {
                 this._features.set(id, updated);
             },

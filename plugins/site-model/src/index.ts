@@ -33,7 +33,7 @@ const SiteModelPlugin: Plugin = {
     guide: [
         {
             name: "DGOC Site Model",
-            content: `Shared site model plugin for DGOC Crane Planner. Parses DXF site plans, extrudes 3D buildings, calibrates image underlays, edits site polygons, and manages hazards. Use the "Load Sample Site" button in the Manager tab to load synthetic buildings and hazards into the CAD scene. ${REQUIRED_DISCLAIMER}`,
+            content: `Shared site model plugin for DGOC Crane Planner. Parses DXF site plans, extrudes 3D buildings, calibrates image underlays, edits site polygons, and manages hazards. Use the "Load Sample Site" button in the Manager tab to load synthetic buildings into the 3D scene and initialise site hazards in the store. ${REQUIRED_DISCLAIMER}`,
         },
     ],
     i18nResources: [
@@ -44,9 +44,9 @@ const SiteModelPlugin: Plugin = {
                 "command.sitemodel.loadSample": "Load Sample Site",
                 "site.model.name": "Site Model",
                 "site.model.loadSample.help":
-                    "Load DGOC synthetic sample site (Tower A, Tower B, Podium, Neighbours, Power Line). Planning aid, not a certified lift plan.",
+                    "Load DGOC synthetic sample site buildings into 3D scene (Tower A, Tower B, Podium, Neighbours). Planning aid, not a certified lift plan.",
                 "site.model.sampleLoaded":
-                    "Sample site loaded successfully. Planning aid, not a certified lift plan.",
+                    "Sample site buildings loaded into scene. Planning aid, not a certified lift plan.",
                 "site.model.disclaimer": REQUIRED_DISCLAIMER,
                 "site.model.underlay": "Image Underlay",
                 "site.model.drawPolygon": "Draw Polygon",

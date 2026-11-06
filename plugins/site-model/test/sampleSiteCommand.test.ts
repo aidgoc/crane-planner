@@ -7,10 +7,15 @@
 // Owner: Ajit
 // ============================================================================
 
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
 import type { IApplication, INode } from "@chili3d/core";
 import { createMockDocument } from "@chili3d/core/test-utils";
+import { initWasm } from "@chili3d/wasm";
+import { createTestFactory } from "../../../packages/wasm/test/helpers";
 import { BuildingBodyNode } from "../src/body/buildingBody";
 import { LoadSampleSiteCommand } from "../src/commands/loadSampleSite";
+import { getSolidVolumeM3 } from "../src/extrusion";
 import { checkPowerLineClearance } from "../src/hazardClearance";
 import { SAMPLE_SITE_PROJECT } from "../src/sampleSiteData";
 import { getActiveSiteProject, resetActiveSiteProject } from "../src/siteStore";
@@ -65,6 +70,120 @@ describe("Load sample site command & 3D Building Bodies", () => {
         expect(() => {
             node.polygon = [{ x: 0, y: 0 }];
         }).toThrow();
+
+        // Constructor validation (Review point):
+        expect(() => {
+            new BuildingBodyNode({
+                document: mockDoc,
+                polygon: [
+                    { x: 0, y: 0 },
+                    { x: 1, y: 0 },
+                    { x: 1, y: 1 },
+                ],
+                heightM: Number.NaN,
+            });
+        }).toThrow();
+
+        expect(() => {
+            new BuildingBodyNode({
+                document: mockDoc,
+                polygon: [
+                    { x: 0, y: 0 },
+                    { x: 1, y: 0 },
+                    { x: 1, y: 1 },
+                ],
+                heightM: 0,
+            });
+        }).toThrow();
+
+        expect(() => {
+            new BuildingBodyNode({
+                document: mockDoc,
+                polygon: [{ x: 0, y: 0 }],
+                heightM: 10,
+            });
+        }).toThrow();
+    });
+
+    test("Tower A generateShape with ShapeFactory returns 3D solid with volume 66,000 m3 (Point from Review)", async () => {
+        const wasmPath = path.resolve(import.meta.dirname, "../../../packages/wasm/lib/chili-wasm.wasm");
+        if (existsSync(wasmPath)) {
+            const wasmBinary = readFileSync(wasmPath);
+            await initWasm({ wasmBinary });
+            const factory = createTestFactory();
+            const previous = Object.getOwnPropertyDescriptor(globalThis, "shapeFactory");
+            Object.defineProperty(globalThis, "shapeFactory", {
+                value: factory,
+                configurable: true,
+                writable: true,
+            });
+
+            try {
+                const mockDoc = createMockDocument();
+                const towerA = new BuildingBodyNode({
+                    document: mockDoc,
+                    name: "tower_a",
+                    label: "Tower A (75m)",
+                    polygon: [
+                        { x: 25, y: 20 },
+                        { x: 65, y: 20 },
+                        { x: 65, y: 42 },
+                        { x: 25, y: 42 },
+                    ],
+                    heightM: 75.0,
+                });
+
+                const shapeRes = towerA.generateShape();
+                expect(shapeRes.isOk).toBe(true);
+                if (shapeRes.isOk) {
+                    const volM3 = getSolidVolumeM3(shapeRes.value);
+                    // Hand-worked: 40 m * 22 m * 75 m = 66,000 m³
+                    expect(volM3).toBeCloseTo(66000.0, 1);
+                }
+            } finally {
+                if (previous) {
+                    Object.defineProperty(globalThis, "shapeFactory", previous);
+                } else {
+                    // biome-ignore lint/suspicious/noExplicitAny: cleanup global stub
+                    delete (globalThis as any).shapeFactory;
+                }
+            }
+        }
+    });
+
+    test("LoadSampleSiteCommand is idempotent — running twice leaves exactly 6 nodes without duplicates (Point 1)", async () => {
+        const mockDoc = createMockDocument();
+        const activeNodes: INode[] = [];
+        mockDoc.modelManager.addNode = (...nodes: INode[]) => {
+            for (const n of nodes) {
+                (n as unknown as { parent: { remove: (target: INode) => void } }).parent = {
+                    remove: (target: INode) => {
+                        const idx = activeNodes.indexOf(target);
+                        if (idx >= 0) activeNodes.splice(idx, 1);
+                    },
+                };
+                activeNodes.push(n);
+            }
+        };
+        mockDoc.modelManager.findNodes = (predicate?: (value: INode) => boolean) => {
+            return predicate ? activeNodes.filter(predicate) : [...activeNodes];
+        };
+
+        const mockApp = {
+            activeView: {
+                document: mockDoc,
+            },
+        } as unknown as IApplication;
+
+        const cmd = new LoadSampleSiteCommand();
+
+        // First click
+        await cmd.execute(mockApp);
+        expect(activeNodes.length).toBe(6);
+
+        // Second click — should clean up previous load and leave exactly 6 nodes
+        await cmd.execute(mockApp);
+        expect(activeNodes.length).toBe(6);
     });
 
     test("LoadSampleSiteCommand creates building nodes and adds them to document", async () => {
@@ -140,5 +259,32 @@ describe("Power line clearance & downstream application (Review Point 2)", () =>
         expect(res.distanceM).toBe(5.0);
         expect(res.marginM).toBe(-1.0);
         expect(res.isViolated).toBe(true);
+    });
+
+    test("checkPowerLineClearance throws RangeError on invalid, non-finite or negative inputs (Point 3)", () => {
+        // xM is NaN
+        expect(() => {
+            checkPowerLineClearance(fixturePowerLine, Number.NaN);
+        }).toThrow(RangeError);
+
+        // additionalRadiusM is NaN
+        expect(() => {
+            checkPowerLineClearance(fixturePowerLine, 0.0, Number.NaN);
+        }).toThrow(RangeError);
+
+        // additionalRadiusM is negative (-4 m)
+        expect(() => {
+            checkPowerLineClearance(fixturePowerLine, -5.0, -4.0);
+        }).toThrow(RangeError);
+
+        // clearance_m is NaN
+        expect(() => {
+            checkPowerLineClearance({ ...fixturePowerLine, clearance_m: Number.NaN }, 0.0);
+        }).toThrow(RangeError);
+
+        // clearance_m is negative (-6 m)
+        expect(() => {
+            checkPowerLineClearance({ ...fixturePowerLine, clearance_m: -6.0 }, 0.0);
+        }).toThrow(RangeError);
     });
 });
