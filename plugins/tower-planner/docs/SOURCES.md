@@ -171,12 +171,17 @@ explanation has **not** been verified from the source documents and is not used 
 number. The reconstructed calculation is in
 [`validation-calculation.txt`](validation-calculation.txt).
 
-### 3.4 Source disagreement on the metric load-curve page
+### 3.4 Metric load-curve page: two load tables
 
-The local PDF's metric load-curve page is not internally identical to the p. 1 summary: its 30 m-jib
-row appears to end at 30 m with 2.5 t, while p. 1 labels the 30 m jib at 2.70 t. This is a further
-inconsistency in the source material. It is recorded here so nobody assumes the documents agree; the
-model keeps 2.70 t and does not silently adopt the 2.5 t point.
+The local PDF's metric load-curve page is **p. 4** and contains two load tables. The **top table** is
+the **5 t hook** table and gives **2.5 t** at the 30 m jib tip. The **bottom table** is the **3 t hook**
+table and gives **2.7 t** at the 30 m jib tip. The difference is **0.245 t** due to the hook block
+weight. Although the catalogue specifies a maximum capacity of **5 t**, it uses the **3 t hook table**
+for jib-tip loads at **30 m and longer**. The **MCT 85 F5** uses the **5 t hook table only**.
+
+This resolves the apparent disagreement with the p. 1 summary: p. 1 labels the 30 m jib at **2.70 t**,
+matching the 3 t hook table. The model keeps **2.70 t**; the **2.5 t** point from the 5 t hook table is
+recorded but is not used for the MCT 88 tip load.
 
 The page number of that metric load-curve page is also ambiguous between copies. The local 8-page
 reference copy was re-inspected for this review: its metric load curves are on **p. 4**, and p. 3 is
