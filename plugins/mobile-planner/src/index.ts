@@ -7,6 +7,7 @@ import { KIT } from "./modules/craneModel";
 
 export * from "./clearance/distance";
 export * from "./clearance/siteClearance";
+export * from "./clearance/swingSweep";
 
 const MobilePlannerPlugin: Plugin = {
     commands: [ShowCraneCommand],
