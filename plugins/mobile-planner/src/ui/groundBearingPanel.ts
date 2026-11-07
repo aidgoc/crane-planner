@@ -19,15 +19,15 @@ export interface GroundBearingPanelController {
     readonly element: HTMLElement;
     update(reactions: PadReactionsResult): AllPadsGroundBearingResult;
     getLatestVerdict(): AllPadsGroundBearingResult | undefined;
-    getPadAreaM2(): number;
+    getPadAreaM2(): number | undefined;
     getAllowableBearingCapacityT_M2(): number | undefined;
 }
 
 export function createGroundBearingPanel(
     options: GroundBearingPanelOptions = {},
 ): GroundBearingPanelController {
-    const defaultPadArea = options.defaultPadAreaM2 ?? 1.0;
-    const defaultAllowable = options.defaultAllowableT_M2 ?? 25.0;
+    const defaultPadArea = options.defaultPadAreaM2;
+    const defaultAllowable = options.defaultAllowableT_M2;
 
     const panel = document.createElement("div");
     panel.className = style.panel;
@@ -37,7 +37,7 @@ export function createGroundBearingPanel(
     title.textContent = "Ground Bearing & Outrigger Stability";
     panel.appendChild(title);
 
-    // Input fields
+    // Input fields (empty by default to avoid unverified assumptions; labeled INDICATIVE on screen)
     const inputsRow = document.createElement("div");
     inputsRow.className = style.inputsRow;
 
@@ -46,11 +46,17 @@ export function createGroundBearingPanel(
     const areaLabel = document.createElement("label");
     areaLabel.className = style.label;
     areaLabel.textContent = "Pad Area (m²)";
+    const areaBadge = document.createElement("span");
+    areaBadge.className = style.indicativeBadge;
+    areaBadge.textContent = "INDICATIVE";
+    areaLabel.appendChild(areaBadge);
+
     const areaInput = document.createElement("input");
     areaInput.type = "number";
-    areaInput.min = "0.1";
+    areaInput.min = "0.01";
     areaInput.step = "0.1";
-    areaInput.value = String(defaultPadArea);
+    areaInput.placeholder = "e.g. 1.0 (site input)";
+    areaInput.value = defaultPadArea !== undefined ? String(defaultPadArea) : "";
     areaInput.className = style.inputField;
     areaGroup.appendChild(areaLabel);
     areaGroup.appendChild(areaInput);
@@ -60,11 +66,17 @@ export function createGroundBearingPanel(
     const allowableLabel = document.createElement("label");
     allowableLabel.className = style.label;
     allowableLabel.textContent = "Allowable Soil (t/m²)";
+    const allowableBadge = document.createElement("span");
+    allowableBadge.className = style.indicativeBadge;
+    allowableBadge.textContent = "INDICATIVE";
+    allowableLabel.appendChild(allowableBadge);
+
     const allowableInput = document.createElement("input");
     allowableInput.type = "number";
-    allowableInput.min = "1";
-    allowableInput.step = "1";
-    allowableInput.value = String(defaultAllowable);
+    allowableInput.min = "0.01";
+    allowableInput.step = "0.1";
+    allowableInput.placeholder = "e.g. 25.0 (site input)";
+    allowableInput.value = defaultAllowable !== undefined ? String(defaultAllowable) : "";
     allowableInput.className = style.inputField;
     allowableGroup.appendChild(allowableLabel);
     allowableGroup.appendChild(allowableInput);
@@ -111,11 +123,11 @@ export function createGroundBearingPanel(
 
         const reaction = document.createElement("div");
         reaction.className = style.padReaction;
-        reaction.textContent = "0.00 t";
+        reaction.textContent = "—";
 
         const pressure = document.createElement("div");
         pressure.className = style.padPressure;
-        pressure.textContent = "0.00 t/m² (0.0 kPa)";
+        pressure.textContent = "—";
 
         card.appendChild(header);
         card.appendChild(reaction);
@@ -136,9 +148,9 @@ export function createGroundBearingPanel(
     let latestReactions: PadReactionsResult | undefined;
     let latestVerdict: AllPadsGroundBearingResult | undefined;
 
-    function getPadArea(): number {
+    function getPadArea(): number | undefined {
         const val = parseFloat(areaInput.value);
-        return Number.isFinite(val) && val > 0 ? val : defaultPadArea;
+        return Number.isFinite(val) && val > 0 ? val : undefined;
     }
 
     function getAllowable(): number | undefined {
@@ -197,7 +209,13 @@ export function createGroundBearingPanel(
         for (const u of updates) {
             const dom = padCards[u.id];
             dom.reaction.textContent = `${u.reaction.toFixed(2)} t`;
-            dom.pressure.textContent = `${u.pressureM2.toFixed(2)} t/m² (${u.pressureKPa.toFixed(1)} kPa)`;
+            if (area !== undefined && u.pressureM2 > 0) {
+                dom.pressure.textContent = `${u.pressureM2.toFixed(2)} t/m² (${u.pressureKPa.toFixed(1)} kPa)`;
+            } else if (u.reaction < 0) {
+                dom.pressure.textContent = "UPLIFT (Tipping)";
+            } else {
+                dom.pressure.textContent = "— (Awaiting pad area)";
+            }
             dom.badge.textContent = u.status;
             dom.badge.className =
                 u.status === "PASS"
@@ -237,7 +255,7 @@ export function createGroundBearingPanel(
         getLatestVerdict(): AllPadsGroundBearingResult | undefined {
             return latestVerdict;
         },
-        getPadAreaM2(): number {
+        getPadAreaM2(): number | undefined {
             return getPadArea();
         },
         getAllowableBearingCapacityT_M2(): number | undefined {

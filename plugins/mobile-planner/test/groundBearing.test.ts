@@ -217,7 +217,7 @@ describe("M4: Ground Bearing vs User Allowable & Stability Verdict (Sujal)", () 
     });
 
     // -------------------------------------------------------------------------
-    // M4 Acceptance Test 7: Interactive Ground Bearing UI Panel
+    // M4 Acceptance Test 7: Interactive Ground Bearing UI Panel with explicit options
     // -------------------------------------------------------------------------
     test("GroundBearingPanel mounts cleanly and updates live DOM with PASS/FAIL verdicts", () => {
         const controller = createGroundBearingPanel({
@@ -247,5 +247,189 @@ describe("M4: Ground Bearing vs User Allowable & Stability Verdict (Sujal)", () 
         expect(html).toContain("22.50 t");
         expect(html).toContain("7.50 t");
         expect(html).toContain(PLANNING_DISCLAIMER);
+    });
+
+    // -------------------------------------------------------------------------
+    // M4 Review Test 8: Boundary condition — pressure exactly equal to allowable (PASS)
+    // Hand calculation:
+    //   W = 60.0 t, L = 8.0 m, B = 6.0 m, centered load => R_i = 15.0 t
+    //   Pad area A = 1.0 m² => p_i = 15.0 t/m²
+    //   Allowable capacity q_allow = 15.0 t/m²
+    //   15.0 <= 15.0 => PASS (boundary condition, not exceeded)
+    // -------------------------------------------------------------------------
+    test("evaluates to PASS when pad pressure is exactly equal to allowable bearing capacity (boundary test)", () => {
+        const reactions = calculatePadReactions({
+            totalWeightT: 60,
+            lengthSpreadM: 8,
+            widthSpreadM: 6,
+            eccentricityXM: 0,
+            eccentricityYM: 0,
+        });
+
+        const result = evaluateGroundBearingVerdict(reactions, 1.0, 15.0);
+
+        expect(result.status).toBe("PASS");
+        expect(result.isAllowableExceeded).toBe(false);
+        expect(result.isTipping).toBe(false);
+        expect(result.peakPad.pressureT_M2).toBeCloseTo(15.0, 6);
+        expect(result.verdict).toContain("PASS");
+    });
+
+    // -------------------------------------------------------------------------
+    // M4 Review Test 9: Boundary condition — pad reaction exactly equal to zero (0.0 t)
+    // Hand calculation:
+    //   W = 60.0 t, L = 8.0 m, B = 6.0 m
+    //   Offset e_x = 4.0 m (at front axle edge) => delta_x = (60 * 4) / 16 = 15.0 t
+    //   R_front = 15.0 + 15.0 = 30.0 t
+    //   R_rear = 15.0 - 15.0 = 0.0 t
+    //   Since min reaction is 0.0 t (>= 0), machine is stable (no tipping / incipient lift)
+    //   Pressure on rear = 0.0 t/m², front = 30.0 t/m²
+    //   With allowable 35.0 t/m² => PASS
+    // -------------------------------------------------------------------------
+    test("evaluates to PASS and no tipping when a pad reaction is exactly equal to zero (boundary test)", () => {
+        const reactions = calculatePadReactions({
+            totalWeightT: 60,
+            lengthSpreadM: 8,
+            widthSpreadM: 6,
+            eccentricityXM: 4.0,
+            eccentricityYM: 0,
+        });
+
+        expect(reactions.reactions.rearLeft.reactionT).toBeCloseTo(0.0, 6);
+        expect(reactions.reactions.rearRight.reactionT).toBeCloseTo(0.0, 6);
+        expect(reactions.isStable).toBe(true);
+
+        const result = evaluateGroundBearingVerdict(reactions, 1.0, 35.0);
+
+        expect(result.status).toBe("PASS");
+        expect(result.isTipping).toBe(false);
+        expect(result.minPad.reactionT).toBeCloseTo(0.0, 6);
+        expect(result.pads.rearLeft.pressureT_M2).toBeCloseTo(0.0, 6);
+        expect(result.pads.rearLeft.status).toBe("PASS");
+    });
+
+    // -------------------------------------------------------------------------
+    // M4 Review Test 10: Tipping detection triggers when allowable capacity is NOT entered
+    // Hand calculation:
+    //   Diagonal offset e_x = 3.0 m, e_y = 2.0 m => R_RR = -6.25 t (uplift)
+    //   Even without an allowable soil capacity specified, tipping is a safety failure
+    // -------------------------------------------------------------------------
+    test("detects tipping even when allowable bearing capacity has not been entered", () => {
+        const reactions = calculatePadReactions({
+            totalWeightT: 60,
+            lengthSpreadM: 8,
+            widthSpreadM: 6,
+            eccentricityXM: 3.0,
+            eccentricityYM: 2.0,
+        });
+
+        // Pass undefined as allowable
+        const result = evaluateGroundBearingVerdict(reactions, 1.0, undefined);
+
+        expect(result.status).toBe("FAIL");
+        expect(result.isTipping).toBe(true);
+        expect(result.verdict.toLowerCase()).toContain("tipping");
+    });
+
+    // -------------------------------------------------------------------------
+    // M4 Review Test 11: Invalid, zero, or negative pad area safely returns NOT_CHECKED (never false PASS)
+    // -------------------------------------------------------------------------
+    test("invalid, zero, or negative pad area safely returns NOT_CHECKED and never produces a false PASS", () => {
+        const stableReactions = calculatePadReactions({
+            totalWeightT: 60,
+            lengthSpreadM: 8,
+            widthSpreadM: 6,
+        });
+
+        // Undefined pad area
+        const r1 = evaluateGroundBearingVerdict(stableReactions, undefined, 20.0);
+        expect(r1.status).toBe("NOT_CHECKED");
+        expect(r1.verdict).toContain("NOT_CHECKED");
+
+        // Zero pad area
+        const r2 = evaluateGroundBearingVerdict(stableReactions, 0, 20.0);
+        expect(r2.status).toBe("NOT_CHECKED");
+
+        // Negative pad area
+        const r3 = evaluateGroundBearingVerdict(stableReactions, -2.5, 20.0);
+        expect(r3.status).toBe("NOT_CHECKED");
+
+        // NaN pad area
+        const r4 = evaluateGroundBearingVerdict(stableReactions, Number.NaN, 20.0);
+        expect(r4.status).toBe("NOT_CHECKED");
+
+        // If machine is tipping, invalid pad area must still report FAIL (tipping)
+        const tippingReactions = calculatePadReactions({
+            totalWeightT: 60,
+            lengthSpreadM: 8,
+            widthSpreadM: 6,
+            eccentricityXM: 3.0,
+            eccentricityYM: 2.0,
+        });
+        const rTipping = evaluateGroundBearingVerdict(tippingReactions, 0, 20.0);
+        expect(rTipping.status).toBe("FAIL");
+        expect(rTipping.isTipping).toBe(true);
+        expect(rTipping.verdict.toLowerCase()).toContain("tipping");
+    });
+
+    // -------------------------------------------------------------------------
+    // M4 Review Test 12: UI Panel defaults to empty fields with INDICATIVE labels, and clearing fields reverts to NOT_CHECKED
+    // -------------------------------------------------------------------------
+    test("GroundBearingPanel defaults to empty fields with INDICATIVE labels, and clearing fields reverts to NOT_CHECKED", () => {
+        // Mount with default options (empty by default)
+        const controller = createGroundBearingPanel();
+        expect(controller.getPadAreaM2()).toBeUndefined();
+        expect(controller.getAllowableBearingCapacityT_M2()).toBeUndefined();
+
+        const areaInput = controller.element.querySelector('input[type="number"]') as HTMLInputElement;
+        const allowableInput = controller.element.querySelectorAll(
+            'input[type="number"]',
+        )[1] as HTMLInputElement;
+
+        expect(areaInput.value).toBe("");
+        expect(allowableInput.value).toBe("");
+
+        // Check for visible INDICATIVE badge on screen
+        const html = controller.element.outerHTML;
+        expect(html).toContain("INDICATIVE");
+
+        const reactions = calculatePadReactions({
+            totalWeightT: 60,
+            lengthSpreadM: 8,
+            widthSpreadM: 6,
+            eccentricityXM: 2.0,
+        });
+
+        // Initial update with empty fields -> NOT_CHECKED
+        const initialVerdict = controller.update(reactions);
+        expect(initialVerdict.status).toBe("NOT_CHECKED");
+        expect(controller.element.outerHTML).toContain("NOT_CHECKED");
+        expect(controller.element.outerHTML).toContain("Awaiting pad area");
+
+        // User enters values
+        areaInput.value = "1.0";
+        areaInput.dispatchEvent(new Event("input"));
+        // Still NOT_CHECKED because allowable is not entered
+        expect(controller.getLatestVerdict()?.status).toBe("NOT_CHECKED");
+
+        allowableInput.value = "25.0";
+        allowableInput.dispatchEvent(new Event("input"));
+        // 22.5 <= 25.0 => PASS
+        expect(controller.getLatestVerdict()?.status).toBe("PASS");
+
+        // User clears pad area -> must revert to NOT_CHECKED (never false PASS)
+        areaInput.value = "";
+        areaInput.dispatchEvent(new Event("input"));
+        expect(controller.getPadAreaM2()).toBeUndefined();
+        expect(controller.getLatestVerdict()?.status).toBe("NOT_CHECKED");
+
+        // User enters pad area again and clears allowable -> reverts to NOT_CHECKED
+        areaInput.value = "1.0";
+        areaInput.dispatchEvent(new Event("input"));
+        allowableInput.value = "";
+        allowableInput.dispatchEvent(new Event("input"));
+        expect(controller.getAllowableBearingCapacityT_M2()).toBeUndefined();
+        expect(controller.getLatestVerdict()?.status).toBe("NOT_CHECKED");
+        expect(controller.getLatestVerdict()?.verdict).toContain("no allowable capacity specified");
     });
 });

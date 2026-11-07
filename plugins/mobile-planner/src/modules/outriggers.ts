@@ -370,37 +370,69 @@ export function calculateGroundBearing(
  * Implements M4 acceptance criteria:
  * - Pad pressure = reaction / pad area vs allowable gives PASS/FAIL.
  * - Any pad reaction going negative returns "tipping".
+ *
+ * Fail-safe & resilience:
+ * - Incomplete, zero, negative, or invalid padAreaM2 returns NOT_CHECKED (unless tipping is detected).
+ * - Missing or non-positive allowable capacity returns NOT_CHECKED (unless tipping is detected).
+ * - Tipping is detected directly from pad reactions and always returns FAIL: tipping.
  */
 export function evaluateGroundBearingVerdict(
     reactions: PadReactionsResult,
-    padAreaM2: number,
+    padAreaM2?: number,
     allowableBearingCapacityT_M2?: number,
 ): AllPadsGroundBearingResult {
-    assertPositiveNumber(padAreaM2, "padAreaM2");
-    if (allowableBearingCapacityT_M2 !== undefined) {
-        assertPositiveNumber(allowableBearingCapacityT_M2, "allowableBearingCapacityT_M2");
-    }
+    const isPadAreaValid = padAreaM2 !== undefined && Number.isFinite(padAreaM2) && padAreaM2 > 0;
+    const isAllowableValid =
+        allowableBearingCapacityT_M2 !== undefined &&
+        Number.isFinite(allowableBearingCapacityT_M2) &&
+        allowableBearingCapacityT_M2 > 0;
+    const effectiveAllowable = isAllowableValid ? allowableBearingCapacityT_M2 : undefined;
 
-    const frontLeft = calculateGroundBearing(
-        reactions.reactions.frontLeft.reactionT,
-        padAreaM2,
-        allowableBearingCapacityT_M2,
-    );
-    const frontRight = calculateGroundBearing(
-        reactions.reactions.frontRight.reactionT,
-        padAreaM2,
-        allowableBearingCapacityT_M2,
-    );
-    const rearLeft = calculateGroundBearing(
-        reactions.reactions.rearLeft.reactionT,
-        padAreaM2,
-        allowableBearingCapacityT_M2,
-    );
-    const rearRight = calculateGroundBearing(
-        reactions.reactions.rearRight.reactionT,
-        padAreaM2,
-        allowableBearingCapacityT_M2,
-    );
+    let frontLeft: GroundBearingResult;
+    let frontRight: GroundBearingResult;
+    let rearLeft: GroundBearingResult;
+    let rearRight: GroundBearingResult;
+
+    if (isPadAreaValid) {
+        frontLeft = calculateGroundBearing(
+            reactions.reactions.frontLeft.reactionT,
+            padAreaM2,
+            effectiveAllowable,
+        );
+        frontRight = calculateGroundBearing(
+            reactions.reactions.frontRight.reactionT,
+            padAreaM2,
+            effectiveAllowable,
+        );
+        rearLeft = calculateGroundBearing(
+            reactions.reactions.rearLeft.reactionT,
+            padAreaM2,
+            effectiveAllowable,
+        );
+        rearRight = calculateGroundBearing(
+            reactions.reactions.rearRight.reactionT,
+            padAreaM2,
+            effectiveAllowable,
+        );
+    } else {
+        const createInvalidPadResult = (reactionT: number): GroundBearingResult => {
+            const padUplifted = reactionT < 0;
+            return {
+                reactionT,
+                padAreaM2: padAreaM2 ?? 0,
+                pressureT_M2: 0,
+                pressureKPa: 0,
+                allowableBearingCapacityT_M2: effectiveAllowable,
+                isAllowableExceeded: undefined,
+                status: padUplifted ? "FAIL" : "NOT_CHECKED",
+                disclaimer: PLANNING_DISCLAIMER,
+            };
+        };
+        frontLeft = createInvalidPadResult(reactions.reactions.frontLeft.reactionT);
+        frontRight = createInvalidPadResult(reactions.reactions.frontRight.reactionT);
+        rearLeft = createInvalidPadResult(reactions.reactions.rearLeft.reactionT);
+        rearRight = createInvalidPadResult(reactions.reactions.rearRight.reactionT);
+    }
 
     const padList: Array<{ id: OutriggerId; label: string; res: GroundBearingResult }> = [
         { id: "frontLeft", label: "Front-Left (FL)", res: frontLeft },
@@ -412,8 +444,14 @@ export function evaluateGroundBearingVerdict(
     let peak = padList[0];
     let min = padList[0];
     for (let i = 1; i < padList.length; i++) {
-        if (padList[i].res.pressureT_M2 > peak.res.pressureT_M2) {
-            peak = padList[i];
+        if (isPadAreaValid) {
+            if (padList[i].res.pressureT_M2 > peak.res.pressureT_M2) {
+                peak = padList[i];
+            }
+        } else {
+            if (padList[i].res.reactionT > peak.res.reactionT) {
+                peak = padList[i];
+            }
         }
         if (padList[i].res.reactionT < min.res.reactionT) {
             min = padList[i];
@@ -422,7 +460,9 @@ export function evaluateGroundBearingVerdict(
 
     const isTipping = !reactions.isStable || padList.some((p) => p.res.reactionT < 0);
     const isAllowableExceeded =
-        allowableBearingCapacityT_M2 !== undefined && padList.some((p) => p.res.isAllowableExceeded === true);
+        effectiveAllowable !== undefined &&
+        isPadAreaValid &&
+        padList.some((p) => p.res.isAllowableExceeded === true);
 
     let status: GroundBearingStatus;
     let verdict: string;
@@ -430,12 +470,15 @@ export function evaluateGroundBearingVerdict(
     if (isTipping) {
         status = "FAIL";
         verdict = `FAIL: tipping (pad uplift detected on ${min.label}, reaction = ${min.res.reactionT.toFixed(2)} t)`;
+    } else if (!isPadAreaValid) {
+        status = "NOT_CHECKED";
+        verdict = "NOT_CHECKED: Pad area (m²) must be specified and strictly greater than 0";
     } else if (isAllowableExceeded) {
         status = "FAIL";
-        verdict = `FAIL: allowable bearing capacity exceeded on ${peak.label} (${peak.res.pressureT_M2.toFixed(2)} t/m² > ${allowableBearingCapacityT_M2?.toFixed(2)} t/m²)`;
-    } else if (allowableBearingCapacityT_M2 !== undefined) {
+        verdict = `FAIL: allowable bearing capacity exceeded on ${peak.label} (${peak.res.pressureT_M2.toFixed(2)} t/m² > ${effectiveAllowable?.toFixed(2)} t/m²)`;
+    } else if (effectiveAllowable !== undefined) {
         status = "PASS";
-        verdict = `PASS: Ground bearing within allowable limit (Peak: ${peak.res.pressureT_M2.toFixed(2)} t/m² ≤ ${allowableBearingCapacityT_M2.toFixed(2)} t/m²)`;
+        verdict = `PASS: Ground bearing within allowable limit (Peak: ${peak.res.pressureT_M2.toFixed(2)} t/m² ≤ ${effectiveAllowable.toFixed(2)} t/m²)`;
     } else {
         status = "NOT_CHECKED";
         verdict = `NOT_CHECKED: Peak pressure ${peak.res.pressureT_M2.toFixed(2)} t/m² (no allowable capacity specified)`;
@@ -492,13 +535,24 @@ export function formatOutriggerSummary(result: PadReactionsResult): string {
  */
 export function formatGroundBearingVerdictSummary(result: AllPadsGroundBearingResult): string {
     const p = result.pads;
+    const formatPadPressure = (pad: GroundBearingResult): string => {
+        if (pad.padAreaM2 <= 0) {
+            return `— t/m² [${pad.status}]`;
+        }
+        return `${pad.pressureT_M2.toFixed(2)} t/m² (${pad.pressureKPa.toFixed(1)} kPa) [${pad.status}]`;
+    };
+    const peakPressureText =
+        result.peakPad.pressureT_M2 > 0
+            ? `${result.peakPad.label} @ ${result.peakPad.pressureT_M2.toFixed(2)} t/m²`
+            : `${result.peakPad.label} (pressure unavailable)`;
+
     return (
         `Ground Bearing Assessment:\n` +
-        `  FL: ${p.frontLeft.pressureT_M2.toFixed(2)} t/m² (${p.frontLeft.pressureKPa.toFixed(1)} kPa) [${p.frontLeft.status}]\n` +
-        `  FR: ${p.frontRight.pressureT_M2.toFixed(2)} t/m² (${p.frontRight.pressureKPa.toFixed(1)} kPa) [${p.frontRight.status}]\n` +
-        `  RL: ${p.rearLeft.pressureT_M2.toFixed(2)} t/m² (${p.rearLeft.pressureKPa.toFixed(1)} kPa) [${p.rearLeft.status}]\n` +
-        `  RR: ${p.rearRight.pressureT_M2.toFixed(2)} t/m² (${p.rearRight.pressureKPa.toFixed(1)} kPa) [${p.rearRight.status}]\n` +
-        `  Peak Pressure: ${result.peakPad.label} @ ${result.peakPad.pressureT_M2.toFixed(2)} t/m²\n` +
+        `  FL: ${formatPadPressure(p.frontLeft)}\n` +
+        `  FR: ${formatPadPressure(p.frontRight)}\n` +
+        `  RL: ${formatPadPressure(p.rearLeft)}\n` +
+        `  RR: ${formatPadPressure(p.rearRight)}\n` +
+        `  Peak Pressure: ${peakPressureText}\n` +
         `  Verdict: ${result.verdict}\n` +
         `${result.disclaimer}`
     );
