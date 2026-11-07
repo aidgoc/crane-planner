@@ -42,6 +42,7 @@ const MobilePlannerPlugin: Plugin = {
 };
 
 export * from "./modules/craneModel";
+export { calculateLiftCheck } from "./modules/liftCheck";
 export * from "./modules/outriggers";
 export * from "./ui/liftSummary";
 export { KIT };
