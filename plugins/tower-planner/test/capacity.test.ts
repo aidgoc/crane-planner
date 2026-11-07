@@ -2,7 +2,7 @@
 // See LICENSE file in the project root for full license information.
 
 import { capacityAt, cornerRadiusAt, momentAt, tipLoadAt, WIND_DERATE_RULE } from "../src/capacity";
-import { MCT85F5, MCT88 } from "../src/catalogue";
+import { JASO_2R, JASO_TD, MCT85F5, MCT88 } from "../src/catalogue";
 import type { CapacityModel, SourcedNumber } from "../src/types";
 
 function indicative(value: number): SourcedNumber {
@@ -77,8 +77,11 @@ describe("capacityAt", () => {
         // 5 m and the corner itself are both on the flat 5 t part of the curve.
         expect(capacityAt(MCT88, 30, 5)).toBeCloseTo(5, 10);
         expect(capacityAt(MCT88, 30, 16.2)).toBeCloseTo(5, 10);
-        expect(capacityAt(MCT88, 30, 0)).toBeCloseTo(5, 10);
-        expect(capacityAt(MCT88, 30, -1)).toBeCloseTo(5, 10);
+    });
+
+    test("returns null for zero or negative radius on a tip-load model", () => {
+        expect(capacityAt(MCT88, 30, 0)).toBeNull();
+        expect(capacityAt(MCT88, 30, -1)).toBeNull();
     });
 
     test("uses the two-piece curve beyond the corner", () => {
@@ -106,7 +109,8 @@ describe("capacityAt", () => {
         // 52 m boundary: 1.15 t × 52 m = 59.8 t·m; 59.8 / 52 = 1.15 t.
         expect(capacityAt(MCT88, 52, 52)).toBeCloseTo(1.15, 10);
         expect(capacityAt(MCT88, 52, 52, 20)).toBeCloseTo(0.92, 10);
-        expect(capacityAt(MCT88, 52, 0)).toBeCloseTo(5, 10);
+        // Zero radius is invalid even at the maximum jib.
+        expect(capacityAt(MCT88, 52, 0)).toBeNull();
         expect(capacityAt(MCT88, 52.000001, 30)).toBeNull();
         expect(capacityAt(MCT88, 53.1, 30)).toBeNull();
         expect(capacityAt(MCT88, 100, 30)).toBeNull();
@@ -290,6 +294,30 @@ describe("Cycle 2 imperial chart comparison", () => {
 
         const errorPct = (Math.abs(capacityT - referenceT) / referenceT) * 100;
         expect(errorPct).toBeLessThanOrEqual(10);
+    });
+});
+
+describe("luffing-jib entries", () => {
+    // The JASO entries publish a 213 ft (64.9224 m) load chart, but a luffing
+    // jib changes radius by luffing rather than by a trolley. The trolley-jib
+    // capacity rules do not describe that geometry, so capacityAt must refuse
+    // even a jib/radius pair that appears in the published table.
+    test.each([
+        { crane: JASO_TD, name: "JASO TD" },
+        { crane: JASO_2R, name: "JASO 2R" },
+    ])("capacityAt refuses the $name luffing-jib model", ({ crane }) => {
+        expect(capacityAt(crane, 64.9224, 24.9936)).toBeNull();
+        expect(capacityAt(crane, 64.9224, 30)).toBeNull();
+        expect(capacityAt(crane, 64.9224, 64.9224)).toBeNull();
+        expect(capacityAt(crane, 64.9224, 24.9936, 20)).toBeNull();
+    });
+
+    test("does not use the luffing-jib chart even when the jib is in range", () => {
+        // Sanity check that the chart is present: the guard, not missing data,
+        // is what produces the null result.
+        expect(JASO_TD.loadChart?.[0].points).toHaveLength(9);
+        expect(JASO_TD.craneType).toBe("luffing-jib");
+        expect(capacityAt(JASO_TD, JASO_TD.defaultJibM.value, 30)).toBeNull();
     });
 });
 

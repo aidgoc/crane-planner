@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { I18n, type I18nKeys, type IApplication, PubSub } from "@chili3d/core";
-import { getCraneById, MCT85F5, MCT88, TOWER_CRANES } from "../src/catalogue";
+import { getCraneById, JASO_2R, JASO_TD, MCT85F5, MCT88, TOWER_CRANES } from "../src/catalogue";
 import { craneDialogNotes, TowerPickCheckCommand } from "../src/command";
 import { PlaceTowerCraneCommand } from "../src/commands/placeCrane";
 import { PLANNING_DISCLAIMER } from "../src/disclaimer";
@@ -52,10 +52,14 @@ describe("tower-planner plugin wiring", () => {
     test("ships the exact required disclaimer in the plugin guide", () => {
         expect(PLANNING_DISCLAIMER).toBe("Planning aid, not a certified lift plan.");
         expect(TowerPlannerPlugin.guide?.[0].content).toContain(PLANNING_DISCLAIMER);
+        expect(TowerPlannerPlugin.guide?.[0].content).toContain("selection matrix");
     });
 
     test("exposes the MCT 88 with sourced values", () => {
         expect(MCT88.id).toBe("potain-mct-88");
+        expect(MCT88.craneType).toBe("trolley-jib");
+        expect(MCT88.modelId).toBe("potain-mct-88");
+        expect(MCT88.configuration).toBe("52 m jib");
         expect(MCT88.maxCapacityT.value).toBe(5);
         // 52 m is the maximum working jib; 53.1 m is the overall tip length.
         expect(MCT88.maxJibLengthM.value).toBe(52);
@@ -68,19 +72,32 @@ describe("tower-planner plugin wiring", () => {
             sourceId: "datasheetOverview",
         });
         expect(MCT88.dimensions.counterJibLengthM.value).toBe(11.9);
+        expect(MCT88.dimensions.baseWidthM).toMatchObject({ value: 3.8 });
+        expect(MCT88.dimensions.counterJibRadiusM).toMatchObject({ value: 13.7 });
+        expect(MCT88.heightUnderHookM).toMatchObject({ value: 43.1 });
+        // Ho is a height under hook, not a freestanding-height limit.
+        expect(MCT88.freestandingHeightM).toMatchObject({ kind: "notStated" });
         expect(MCT88.heaviestErectionComponent.massT.value).toBe(4.38);
         expect(MCT88.sources.datasheetOverview.page).toBe(1);
+        expect(MCT88.sources.datasheetMastReactions.page).toBe(2);
         expect(MCT88.sources.datasheetDimensions.page).toBe(6);
     });
 
     test("retrieves each crane by its stable id", () => {
         expect(getCraneById("potain-mct-88")).toBe(MCT88);
         expect(getCraneById("potain-mct-85-f5")).toBe(MCT85F5);
+        expect(getCraneById("jaso-j438pa-2r-td-213")).toBe(JASO_TD);
+        expect(getCraneById("jaso-j438pa-2r-2r-213")).toBe(JASO_2R);
         expect(getCraneById("missing-crane")).toBeUndefined();
     });
 
     test("exposes the MCT 85 F5 with sourced chart values", () => {
-        expect(TOWER_CRANES.map((crane) => crane.id)).toEqual(["potain-mct-88", "potain-mct-85-f5"]);
+        expect(TOWER_CRANES.map((crane) => crane.id)).toEqual([
+            "potain-mct-88",
+            "potain-mct-85-f5",
+            "jaso-j438pa-2r-td-213",
+            "jaso-j438pa-2r-2r-213",
+        ]);
 
         expect(MCT85F5.id).toBe("potain-mct-85-f5");
         expect(MCT85F5.standard).toBe("FEM 1.001-A3");
@@ -94,7 +111,36 @@ describe("tower-planner plugin wiring", () => {
         expect(MCT85F5.sources.datasheetLoadCharts.page).toBe(3);
         expect(MCT85F5.sources.datasheetDimensions.page).toBe(5);
         expect(MCT85F5.dimensions.counterJibLengthM.value).toBe(14.6);
+        expect(MCT85F5.heightUnderHookM).toMatchObject({ value: 41.6 });
+        expect(MCT85F5.freestandingHeightM).toMatchObject({ kind: "notStated" });
         expect(MCT85F5.heaviestErectionComponent.massT.value).toBe(4.38);
+    });
+
+    test("exposes the two JASO configurations as INDICATIVE luffing-jib entries", () => {
+        // Two configurations of one model, not two crane models.
+        expect(JASO_TD.modelId).toBe("jaso-j438pa-2r");
+        expect(JASO_2R.modelId).toBe("jaso-j438pa-2r");
+        expect(JASO_TD.modelName).toBe("JASO J438PA.2R");
+        expect(JASO_2R.modelName).toBe("JASO J438PA.2R");
+        expect(JASO_TD.configuration).toBe("213 ft TD");
+        expect(JASO_2R.configuration).toBe("213 ft 2R");
+        expect(JASO_TD.craneType).toBe("luffing-jib");
+        expect(JASO_2R.craneType).toBe("luffing-jib");
+
+        // The chart is transcribed from the PDF; choosing the 213 ft TD/2R
+        // configuration is the project's INDICATIVE selection.
+        expect(JASO_TD.maxCapacityT.value).toBeCloseTo(16.0118, 4);
+        expect(JASO_2R.maxCapacityT.value).toBeCloseTo(18.0076, 4);
+        expect(JASO_TD.defaultJibM.provenance.kind).toBe("indicative");
+        expect(JASO_TD.maxJibLengthM.value).toBeCloseTo(64.9224, 4);
+        expect(JASO_TD.freestandingHeightM).toMatchObject({ value: 72.2376 });
+        expect(JASO_TD.heightUnderHookM).toMatchObject({ kind: "notStated" });
+        expect(JASO_TD.dimensions.mastWidthM).toMatchObject({ kind: "notStated" });
+        expect(JASO_TD.dimensions.baseWidthM).toMatchObject({ kind: "notStated" });
+        expect(JASO_TD.dimensions.counterJibLengthM).toMatchObject({ kind: "notStated" });
+        expect(JASO_TD.dimensions.counterJibRadiusM).toMatchObject({ kind: "notStated" });
+        expect(JASO_TD.heaviestErectionComponent).toMatchObject({ kind: "notStated" });
+        expect(JASO_TD.combinedTransportPackage?.massT.value).toBeCloseTo(20.5523, 4);
     });
 });
 
@@ -122,6 +168,16 @@ describe("craneDialogNotes", () => {
         // The overview and the capacity chart come from different pages.
         expect(notes.capacitySourceDocument).toContain("Potain MCT 85 F5 Data Sheet");
         expect(notes.capacitySourcePage).toBe(3);
+    });
+
+    test("describes the JASO entries as unsupported luffing-jib models", () => {
+        const notes = craneDialogNotes(JASO_TD);
+
+        expect(notes.sourceDocument).toContain("JASO J438PA.2R Data Sheet");
+        expect(notes.sourcePage).toBe(1);
+        expect(notes.defaultJibKind).toBe("indicative");
+        expect(notes.defaultJibDetail).toContain("213");
+        expect(notes.capacityMethod).toBe("unsupported");
     });
 
     test("reports a sourced default jib with its document and page", () => {
@@ -171,85 +227,220 @@ describe("validation evidence", () => {
     });
 });
 
+type OpenedPickDialog = {
+    title: I18nKeys;
+    content: HTMLElement;
+};
+
+async function openPickDialog(): Promise<OpenedPickDialog> {
+    let title: I18nKeys | undefined;
+    let content: HTMLElement | undefined;
+
+    const onDialog = (dialogTitle: I18nKeys, dialogContent: HTMLElement) => {
+        title = dialogTitle;
+        content = dialogContent;
+    };
+
+    PubSub.default.sub("showDialog", onDialog);
+    try {
+        await new TowerPickCheckCommand().execute({} as IApplication);
+    } finally {
+        PubSub.default.removeAll("showDialog");
+    }
+
+    if (title === undefined) throw new Error("Command did not publish a dialog title.");
+    if (content === undefined) throw new Error("Command did not publish dialog content.");
+    return { title, content };
+}
+
+function findInput(content: HTMLElement, role: string): HTMLInputElement {
+    const element = content.querySelector<HTMLInputElement>(`input[data-role="${role}"]`);
+    if (element === null) throw new Error(`Input [data-role="${role}"] is missing.`);
+    return element;
+}
+
+function enterInput(content: HTMLElement, role: string, value: string): void {
+    const element = findInput(content, role);
+    element.value = value;
+    element.dispatchEvent(new Event("input"));
+}
+
+function tableRows(content: HTMLElement): HTMLTableRowElement[] {
+    return Array.from(content.querySelectorAll<HTMLTableRowElement>("tbody tr[data-pick]"));
+}
+
+function matrixRows(content: HTMLElement): HTMLTableRowElement[] {
+    return Array.from(content.querySelectorAll<HTMLTableRowElement>("tbody tr[data-crane]"));
+}
+
+function matrixCell(row: HTMLTableRowElement, pickLabel: string): HTMLTableCellElement {
+    const cell = row.querySelector<HTMLTableCellElement>(`td[data-pick-cell="${pickLabel}"]`);
+    if (cell === null) throw new Error(`Matrix cell for ${pickLabel} is missing.`);
+    return cell;
+}
+
+function matrixState(content: HTMLElement): string | null {
+    return content.querySelector('[data-role="matrix-summary"]')?.getAttribute("data-state") ?? null;
+}
+
+function matrixOverall(row: HTMLTableRowElement): HTMLTableCellElement {
+    const cell = row.querySelector<HTMLTableCellElement>('[data-role="matrix-overall"]');
+    if (cell === null) throw new Error("Matrix overall cell is missing.");
+    return cell;
+}
+
+function setRowInput(row: HTMLTableRowElement, role: string, value: string): void {
+    const element = rowInput(row, role);
+    element.value = value;
+    element.dispatchEvent(new Event("input"));
+}
+
+function rowInput(row: HTMLTableRowElement, role: string): HTMLInputElement {
+    const element = row.querySelector<HTMLInputElement>(`input[data-role="${role}"]`);
+    if (element === null) throw new Error(`Row input [data-role="${role}"] is missing.`);
+    return element;
+}
+
+function cellText(row: HTMLTableRowElement, role: string): string | null {
+    return row.querySelector(`[data-role="${role}"]`)?.textContent ?? null;
+}
+
+function statuses(content: HTMLElement): (string | null)[] {
+    return Array.from(content.querySelectorAll("[data-status]")).map((element) =>
+        element.getAttribute("data-status"),
+    );
+}
+
+function enterMastAndJib(content: HTMLElement, mastX: string, mastY: string, jibM: string): void {
+    enterInput(content, "mast-x", mastX);
+    enterInput(content, "mast-y", mastY);
+    enterInput(content, "jib", jibM);
+}
+
 describe("TowerPickCheckCommand", () => {
-    test("shows the sample pick table with PASS/PASS/FAIL and the disclaimer", async () => {
-        let dialogTitle: I18nKeys | undefined;
-        let dialogContent: HTMLElement | undefined;
+    test("renders the five sample-site picks and requires a mast position", async () => {
+        const { title, content } = await openPickDialog();
 
-        const onDialog = (title: I18nKeys, content: HTMLElement) => {
-            dialogTitle = title;
-            dialogContent = content;
-        };
+        expect(title).toBe("tower.dialog.title" as I18nKeys);
+        expect(content.textContent).toContain(PLANNING_DISCLAIMER);
 
-        PubSub.default.sub("showDialog", onDialog);
-        try {
-            await new TowerPickCheckCommand().execute({} as IApplication);
-        } finally {
-            PubSub.default.removeAll("showDialog");
-        }
+        const rows = tableRows(content);
+        expect(rows).toHaveLength(5);
+        expect(rows.map((row) => row.getAttribute("data-pick"))).toEqual(["P1", "P2", "P3", "P4", "P5"]);
 
-        expect(dialogTitle).toBe("tower.dialog.title" as I18nKeys);
-        if (dialogContent === undefined) throw new Error("Command did not publish dialog content.");
+        // The dialog starts with the canonical sample-site values.
+        expect(rows.map((row) => rowInput(row, "load").value)).toEqual(["2", "1.5", "2.6", "4.2", "1.8"]);
+        expect(rows.map((row) => rowInput(row, "supply-x").value)).toEqual(["26", "83", "6", "33", "85"]);
+        expect(rows.map((row) => rowInput(row, "supply-y").value)).toEqual(["5.5", "13", "45", "8", "20"]);
+        expect(rows.map((row) => rowInput(row, "drop-x").value)).toEqual(["62", "28", "64", "38", "68"]);
+        expect(rows.map((row) => rowInput(row, "drop-y").value)).toEqual(["39", "23", "41", "25", "66"]);
 
-        expect(dialogContent.textContent).toContain(PLANNING_DISCLAIMER);
+        // No mast is invented: without one, every coordinate pick is INVALID
+        // and no radius can be displayed.
+        expect(statuses(content)).toEqual(["INVALID", "INVALID", "INVALID", "INVALID", "INVALID"]);
+        expect(
+            Array.from(content.querySelectorAll("[data-status]")).map((element) =>
+                element.getAttribute("data-issue"),
+            ),
+        ).toEqual(["invalid-mast", "invalid-mast", "invalid-mast", "invalid-mast", "invalid-mast"]);
+        expect(rows.map((row) => cellText(row, "supply-radius"))).toEqual(["-", "-", "-", "-", "-"]);
+        expect(rows.map((row) => cellText(row, "drop-radius"))).toEqual(["-", "-", "-", "-", "-"]);
+        expect(rows.map((row) => cellText(row, "governing-radius"))).toEqual(["-", "-", "-", "-", "-"]);
 
-        const statuses = Array.from(dialogContent.querySelectorAll("[data-status]")).map((element) =>
-            element.getAttribute("data-status"),
-        );
-        expect(statuses).toEqual(["PASS", "PASS", "FAIL"]);
-
-        const summary = dialogContent.querySelector("[data-all-pass]");
+        const summary = content.querySelector("[data-all-pass]");
         expect(summary).not.toBeNull();
         if (summary === null) throw new Error("Dialog summary is missing.");
         expect(summary.getAttribute("data-all-pass")).toBe("false");
     });
 
-    test("marks a malformed wind entry as INVALID instead of treating it as no wind", async () => {
-        let dialogContent: HTMLElement | undefined;
-
-        const onDialog = (_title: I18nKeys, content: HTMLElement) => {
-            dialogContent = content;
-        };
-
-        PubSub.default.sub("showDialog", onDialog);
+    test("resolves the sample-site supply/drop radii against a mast position", async () => {
+        const restore = installEnglishLocale();
         try {
-            await new TowerPickCheckCommand().execute({} as IApplication);
-        } finally {
-            PubSub.default.removeAll("showDialog");
-        }
+            const { content } = await openPickDialog();
 
-        if (dialogContent === undefined) throw new Error("Command did not publish dialog content.");
+            // Mast (44,17) is a synthetic test position, not a crane or site
+            // specification.
+            enterMastAndJib(content, "44", "17", "52");
+
+            // Hand-worked distances from mast (44,17):
+            //   P1 supply hypot(18, 11.5) = 21.36; drop hypot(18, 22) = 28.43 -> drop
+            //   P2 supply hypot(39, 4)    = 39.20; drop hypot(16, 6)  = 17.09 -> supply
+            //   P3 supply hypot(38, 28)   = 47.20; drop hypot(20, 24) = 31.24 -> supply
+            //   P4 supply hypot(11, 9)    = 14.21; drop hypot(6, 8)   = 10.00 -> supply
+            //   P5 supply hypot(41, 3)    = 41.11; drop hypot(24, 49) = 54.56 -> drop
+            const rows = tableRows(content);
+            expect(rows.map((row) => cellText(row, "supply-radius"))).toEqual([
+                "21.36 m",
+                "39.20 m",
+                "47.20 m",
+                "14.21 m",
+                "41.11 m",
+            ]);
+            expect(rows.map((row) => cellText(row, "drop-radius"))).toEqual([
+                "28.43 m",
+                "17.09 m",
+                "31.24 m",
+                "10.00 m",
+                "54.56 m",
+            ]);
+            expect(rows.map((row) => cellText(row, "governing-radius"))).toEqual([
+                "28.43 m (drop)",
+                "39.20 m (supply)",
+                "47.20 m (supply)",
+                "14.21 m (supply)",
+                "54.56 m (drop)",
+            ]);
+            expect(
+                rows.map((row) =>
+                    row.querySelector('[data-role="governing-radius"]')?.getAttribute("data-governing"),
+                ),
+            ).toEqual(["drop", "supply", "supply", "supply", "drop"]);
+
+            // MCT 88 with the 52 m jib: moment = 1.15 t × 52 m = 59.8 t·m.
+            // capacity = 59.8 / governing radius (or none beyond 52 m):
+            //   P1 59.8 / 28.43 = 2.10 t; 2.0 t PASS
+            //   P2 59.8 / 39.20 = 1.53 t; 1.5 t PASS
+            //   P3 59.8 / 47.20 = 1.27 t; 2.6 t FAIL
+            //   P4 59.8 / 14.21 = 4.21 t; 4.2 t PASS
+            //   P5 54.56 m > 52 m -> OUT_OF_RANGE
+            expect(statuses(content)).toEqual(["PASS", "PASS", "FAIL", "PASS", "OUT_OF_RANGE"]);
+            expect(rows.map((row) => cellText(row, "capacity"))).toEqual([
+                "2.10 t",
+                "1.53 t",
+                "1.27 t",
+                "4.21 t",
+                "-",
+            ]);
+        } finally {
+            restore();
+        }
+    });
+
+    test("marks a malformed wind entry as INVALID instead of treating it as no wind", async () => {
+        const { content } = await openPickDialog();
+        enterMastAndJib(content, "44", "17", "52");
+
+        // Precondition: the valid coordinate setup produced real results.
+        expect(statuses(content)).toEqual(["PASS", "PASS", "FAIL", "PASS", "OUT_OF_RANGE"]);
 
         // Chromium reports an incomplete numeric entry such as "1e" as
         // value === "" with badInput === true. Happy DOM cannot enter that state
         // from a value, so reproduce the browser-reported validity on the real
         // dialog input and trigger the command's normal recalculate path.
-        const numberInputs = dialogContent.querySelectorAll('input[type="number"]');
-        const windInput = numberInputs[1];
-        expect(windInput).not.toBeUndefined();
-        if (windInput === undefined) throw new Error("Wind input is missing.");
+        const windInput = findInput(content, "wind");
         Object.defineProperty(windInput, "validity", {
             configurable: true,
             value: { badInput: true },
         });
         windInput.dispatchEvent(new Event("input"));
 
-        const statuses = Array.from(dialogContent.querySelectorAll("[data-status]")).map((element) =>
-            element.getAttribute("data-status"),
-        );
-        expect(statuses).toEqual(["INVALID", "INVALID", "INVALID"]);
+        expect(statuses(content)).toEqual(["INVALID", "INVALID", "INVALID", "INVALID", "INVALID"]);
 
-        const capacities = Array.from(dialogContent.querySelectorAll("tbody tr")).map(
-            (row) => row.querySelectorAll("td")[3].textContent,
-        );
-        expect(capacities).toEqual(["-", "-", "-"]);
+        const rows = tableRows(content);
+        expect(rows.map((row) => cellText(row, "capacity"))).toEqual(["-", "-", "-", "-", "-"]);
+        expect(rows.map((row) => cellText(row, "utilisation"))).toEqual(["-", "-", "-", "-", "-"]);
 
-        const utilisations = Array.from(dialogContent.querySelectorAll("tbody tr")).map(
-            (row) => row.querySelectorAll("td")[4].textContent,
-        );
-        expect(utilisations).toEqual(["-", "-", "-"]);
-
-        const summary = dialogContent.querySelector("[data-all-pass]");
+        const summary = content.querySelector("[data-all-pass]");
         expect(summary).not.toBeNull();
         if (summary === null) throw new Error("Dialog summary is missing.");
         expect(summary.getAttribute("data-all-pass")).toBe("false");
@@ -291,57 +482,314 @@ describe("TowerPickCheckCommand", () => {
         }
     });
 
-    test("recalculates the sample picks with the MCT 85 F5 chart", async () => {
-        let dialogContent: HTMLElement | undefined;
-
-        const onDialog = (_title: I18nKeys, content: HTMLElement) => {
-            dialogContent = content;
-        };
-
-        PubSub.default.sub("showDialog", onDialog);
+    test("renders the unsupported luffing-jib notes for a JASO entry", async () => {
+        const restore = installEnglishLocale();
         try {
-            await new TowerPickCheckCommand().execute({} as IApplication);
+            const { content } = await openPickDialog();
+            const craneSelect = content.querySelector("select");
+            expect(craneSelect).not.toBeNull();
+            if (craneSelect === null) throw new Error("Crane selector is missing.");
+
+            craneSelect.value = "jaso-j438pa-2r-td-213";
+            craneSelect.dispatchEvent(new Event("change"));
+
+            const text = content.textContent ?? "";
+            expect(text).toContain("Selected crane source: JASO J438PA.2R Data Sheet");
+            expect(text).toContain("Capacity method: not evaluated");
+            expect(text).toContain("Capacity source: not applicable");
+            expect(text).toContain("Selected crane is not evaluated");
+            expect(statuses(content)).toEqual([
+                "UNSUPPORTED",
+                "UNSUPPORTED",
+                "UNSUPPORTED",
+                "UNSUPPORTED",
+                "UNSUPPORTED",
+            ]);
+            expect(text).not.toContain("{0}");
+            expect(text).not.toContain("{1}");
         } finally {
-            PubSub.default.removeAll("showDialog");
+            restore();
         }
+    });
 
-        if (dialogContent === undefined) throw new Error("Command did not publish dialog content.");
+    test("recalculates the sample-site picks with the MCT 85 F5 chart", async () => {
+        const { content } = await openPickDialog();
+        enterInput(content, "mast-x", "44");
+        enterInput(content, "mast-y", "17");
 
-        const craneSelect = dialogContent.querySelector("select");
+        const craneSelect = content.querySelector("select");
         expect(craneSelect).not.toBeNull();
         if (craneSelect === null) throw new Error("Crane selector is missing.");
 
         craneSelect.value = "potain-mct-85-f5";
         craneSelect.dispatchEvent(new Event("change"));
 
-        // 30 m chart: 3.9 t at 20 m, 3.0 t at 25 m, 2.5 t at 30 m.
-        const statuses = Array.from(dialogContent.querySelectorAll("[data-status]")).map((element) =>
-            element.getAttribute("data-status"),
-        );
-        expect(statuses).toEqual(["PASS", "PASS", "FAIL"]);
-
-        const capacities = Array.from(dialogContent.querySelectorAll("tbody tr")).map(
-            (row) => row.querySelectorAll("td")[3].textContent,
-        );
-        expect(capacities).toEqual(["3.90 t", "3.00 t", "2.50 t"]);
-
-        const jibInput = dialogContent.querySelector('input[type="number"]');
-        expect(jibInput).not.toBeNull();
-        if (jibInput === null) throw new Error("Jib input is missing.");
+        const jibInput = findInput(content, "jib");
         expect(jibInput.value).toBe("30");
 
-        // 52 m: 3.2 t at 20 m, 2.5 t at 25 m, 2.15 t at 30 m.
-        jibInput.value = "52";
-        jibInput.dispatchEvent(new Event("input"));
+        // 30 m chart. Between published radii the next larger radius is used:
+        //   P1 28.43 m -> 29 m point -> 2.50 t; 2.0 t PASS
+        //   P2 39.20 m, P3 47.20 m and P5 54.56 m exceed the 30 m jib.
+        //   P4 14.21 m is below the 16.3 m first point -> 5.00 t; 4.2 t PASS
+        const rows = tableRows(content);
+        expect(statuses(content)).toEqual(["PASS", "OUT_OF_RANGE", "OUT_OF_RANGE", "PASS", "OUT_OF_RANGE"]);
+        expect(rows.map((row) => cellText(row, "capacity"))).toEqual(["2.50 t", "-", "-", "5.00 t", "-"]);
 
-        const recalculated = Array.from(dialogContent.querySelectorAll("[data-status]")).map((element) =>
-            element.getAttribute("data-status"),
-        );
-        expect(recalculated).toEqual(["PASS", "FAIL", "FAIL"]);
+        // 52 m chart:
+        //   P1 28.43 m -> 30 m point -> 2.15 t; 2.0 t PASS
+        //   P2 39.20 m -> 40 m point -> 1.55 t; 1.5 t PASS
+        //   P3 47.20 m -> 50 m point -> 1.15 t; 2.6 t FAIL
+        //   P4 14.21 m -> 15 m point -> 4.50 t; 4.2 t PASS
+        //   P5 54.56 m > 52 m -> OUT_OF_RANGE
+        enterInput(content, "jib", "52");
 
-        const firstRow = dialogContent.querySelectorAll("tbody tr")[0];
-        expect(firstRow).not.toBeUndefined();
-        const capacityCell = firstRow.querySelectorAll("td")[3];
-        expect(capacityCell.textContent).toBe("3.20 t");
+        expect(statuses(content)).toEqual(["PASS", "PASS", "FAIL", "PASS", "OUT_OF_RANGE"]);
+        expect(rows.map((row) => cellText(row, "capacity"))).toEqual([
+            "2.15 t",
+            "1.55 t",
+            "1.15 t",
+            "4.50 t",
+            "-",
+        ]);
+    });
+
+    test("shows the catalogue matrix without inventing a mast position", async () => {
+        const { content } = await openPickDialog();
+
+        expect(matrixState(content)).toBe("missing-mast");
+
+        const rows = matrixRows(content);
+        expect(rows.map((row) => row.getAttribute("data-crane"))).toEqual([
+            "potain-mct-88",
+            "potain-mct-85-f5",
+            "jaso-j438pa-2r-td-213",
+            "jaso-j438pa-2r-2r-213",
+        ]);
+
+        // The trolley-jib entries cannot resolve coordinates without a mast.
+        for (const row of rows.slice(0, 2)) {
+            expect(row.querySelectorAll("td[data-pick-cell]")).toHaveLength(5);
+            expect(
+                ["P1", "P2", "P3", "P4", "P5"].map((label) =>
+                    matrixCell(row, label).getAttribute("data-matrix-status"),
+                ),
+            ).toEqual(["INVALID", "INVALID", "INVALID", "INVALID", "INVALID"]);
+            expect(
+                ["P1", "P2", "P3", "P4", "P5"].map((label) =>
+                    matrixCell(row, label).getAttribute("data-matrix-issue"),
+                ),
+            ).toEqual(["invalid-mast", "invalid-mast", "invalid-mast", "invalid-mast", "invalid-mast"]);
+            expect(
+                ["P1", "P2", "P3", "P4", "P5"].map((label) =>
+                    matrixCell(row, label).getAttribute("data-matrix-capacity"),
+                ),
+            ).toEqual(["", "", "", "", ""]);
+
+            expect(matrixOverall(row).getAttribute("data-matrix-all-pass")).toBe("false");
+            expect(matrixOverall(row).getAttribute("data-matrix-passing")).toBe("0");
+        }
+
+        // The luffing-jib entries are not evaluated at all, so a missing mast
+        // cannot make them look like an invalid capacity result.
+        for (const row of rows.slice(2)) {
+            expect(row.querySelectorAll("td[data-pick-cell]")).toHaveLength(5);
+            expect(
+                ["P1", "P2", "P3", "P4", "P5"].map((label) =>
+                    matrixCell(row, label).getAttribute("data-matrix-status"),
+                ),
+            ).toEqual(["UNSUPPORTED", "UNSUPPORTED", "UNSUPPORTED", "UNSUPPORTED", "UNSUPPORTED"]);
+            expect(
+                ["P1", "P2", "P3", "P4", "P5"].map((label) =>
+                    matrixCell(row, label).getAttribute("data-matrix-issue"),
+                ),
+            ).toEqual([
+                "unsupported-crane-type",
+                "unsupported-crane-type",
+                "unsupported-crane-type",
+                "unsupported-crane-type",
+                "unsupported-crane-type",
+            ]);
+            expect(matrixOverall(row).getAttribute("data-matrix-unsupported")).toBe("true");
+            expect(matrixOverall(row).getAttribute("data-matrix-all-pass")).toBe("false");
+            expect(matrixOverall(row).getAttribute("data-matrix-passing")).toBe("0");
+        }
+
+        const summary = content.querySelector('[data-role="matrix-summary"]');
+        expect(summary).not.toBeNull();
+        if (summary === null) throw new Error("Matrix summary is missing.");
+        expect(summary.getAttribute("data-passing-cranes")).toBe("0");
+        expect(summary.getAttribute("data-crane-count")).toBe("4");
+        expect(summary.getAttribute("data-evaluated-cranes")).toBe("2");
+        expect(summary.getAttribute("data-unsupported-cranes")).toBe("2");
+    });
+
+    test("evaluates every supported catalogue crane against the five sample-site picks", async () => {
+        const restore = installEnglishLocale();
+        try {
+            const { content } = await openPickDialog();
+            enterInput(content, "mast-x", "44");
+            enterInput(content, "mast-y", "17");
+
+            expect(matrixState(content)).toBe("no-crane-passes");
+
+            const rows = matrixRows(content);
+            expect(rows).toHaveLength(4);
+
+            const mct88 = rows[0];
+            expect(mct88.getAttribute("data-crane")).toBe("potain-mct-88");
+            const jibCell = mct88.querySelector("td[data-jib-provenance]");
+            expect(jibCell).not.toBeNull();
+            if (jibCell === null) throw new Error("Matrix jib cell is missing.");
+            expect(jibCell.getAttribute("data-jib-provenance")).toBe("indicative");
+            expect(jibCell.textContent).toBe("30 m (INDICATIVE)");
+            expect(matrixCell(mct88, "P1").getAttribute("data-matrix-status")).toBe("PASS");
+            expect(matrixCell(mct88, "P1").getAttribute("data-matrix-capacity")).toBe("2.85");
+            expect(matrixCell(mct88, "P1").getAttribute("data-matrix-utilisation")).toBe("70.2");
+            expect(matrixCell(mct88, "P1").getAttribute("data-matrix-radius")).toBe("28.43");
+            expect(matrixCell(mct88, "P1").getAttribute("data-matrix-governing")).toBe("drop");
+
+            expect(matrixCell(mct88, "P2").getAttribute("data-matrix-status")).toBe("OUT_OF_RANGE");
+            expect(matrixCell(mct88, "P2").getAttribute("data-matrix-reason")).toBe("out-of-range");
+            expect(matrixCell(mct88, "P2").getAttribute("data-matrix-capacity")).toBe("");
+
+            expect(matrixCell(mct88, "P4").getAttribute("data-matrix-status")).toBe("PASS");
+            expect(matrixCell(mct88, "P4").getAttribute("data-matrix-capacity")).toBe("5.00");
+            expect(matrixCell(mct88, "P4").getAttribute("data-matrix-utilisation")).toBe("84.0");
+            expect(matrixCell(mct88, "P4").getAttribute("data-matrix-governing")).toBe("supply");
+
+            const mct85 = rows[1];
+            expect(mct85.getAttribute("data-crane")).toBe("potain-mct-85-f5");
+            expect(matrixCell(mct85, "P1").getAttribute("data-matrix-capacity")).toBe("2.50");
+            expect(matrixCell(mct85, "P1").getAttribute("data-matrix-utilisation")).toBe("80.0");
+            expect(matrixCell(mct85, "P4").getAttribute("data-matrix-capacity")).toBe("5.00");
+
+            for (const row of rows.slice(0, 2)) {
+                expect(matrixOverall(row).getAttribute("data-matrix-passing")).toBe("2");
+                expect(matrixOverall(row).getAttribute("data-matrix-total")).toBe("5");
+                expect(matrixOverall(row).getAttribute("data-matrix-all-pass")).toBe("false");
+                expect(matrixOverall(row).getAttribute("data-matrix-unsupported")).toBe("false");
+            }
+
+            // Luffing-jib rows are listed but never counted as passing or as
+            // evaluated capacity results.
+            for (const row of rows.slice(2)) {
+                expect(matrixCell(row, "P1").getAttribute("data-matrix-status")).toBe("UNSUPPORTED");
+                expect(matrixCell(row, "P1").getAttribute("data-matrix-issue")).toBe(
+                    "unsupported-crane-type",
+                );
+                expect(matrixCell(row, "P1").getAttribute("data-matrix-capacity")).toBe("");
+                expect(matrixOverall(row).getAttribute("data-matrix-unsupported")).toBe("true");
+                expect(matrixOverall(row).getAttribute("data-matrix-all-pass")).toBe("false");
+                expect(matrixOverall(row).getAttribute("data-matrix-passing")).toBe("0");
+            }
+
+            const summary = content.querySelector('[data-role="matrix-summary"]');
+            expect(summary).not.toBeNull();
+            if (summary === null) throw new Error("Matrix summary is missing.");
+            expect(summary.textContent).toBe(
+                "None of the 2 evaluated catalogued cranes passes every pick. 2 luffing-jib crane(s) were not evaluated.",
+            );
+            expect(matrixCell(mct88, "P2").textContent).toContain(
+                "Governing radius is outside this crane's published range.",
+            );
+        } finally {
+            restore();
+        }
+    });
+
+    test("recalculates the matrix when the mast or a pick changes", async () => {
+        const { content } = await openPickDialog();
+        enterMastAndJib(content, "44", "17", "30");
+
+        let rows = matrixRows(content);
+        expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-utilisation")).toBe("70.2");
+
+        // P1 load 2.0 -> 4.0 t: MCT 88 4.0 / 2.85 = 140.4 %, MCT 85 4.0 / 2.50 = 160.0 %.
+        setRowInput(tableRows(content)[0], "load", "4");
+        rows = matrixRows(content);
+        expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-status")).toBe("FAIL");
+        expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-utilisation")).toBe("140.4");
+        expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-reason")).toBe("over-capacity");
+        expect(matrixCell(rows[1], "P1").getAttribute("data-matrix-utilisation")).toBe("160.0");
+        expect(matrixState(content)).toBe("no-crane-passes");
+
+        // Move the mast to the origin: P1's drop is hypot(62, 39) = 73.25 m
+        // from the mast, beyond both 30 m default jibs.
+        enterInput(content, "mast-x", "0");
+        enterInput(content, "mast-y", "0");
+        rows = matrixRows(content);
+        expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-status")).toBe("OUT_OF_RANGE");
+        expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-radius")).toBe("73.25");
+        expect(matrixCell(rows[1], "P1").getAttribute("data-matrix-status")).toBe("OUT_OF_RANGE");
+    });
+
+    test("reports invalid pick coordinates instead of a capacity result", async () => {
+        const { content } = await openPickDialog();
+        enterMastAndJib(content, "44", "17", "30");
+
+        setRowInput(tableRows(content)[0], "supply-x", "");
+
+        expect(matrixState(content)).toBe("invalid-picks");
+
+        const rows = matrixRows(content);
+        for (const row of rows.slice(0, 2)) {
+            const cell = matrixCell(row, "P1");
+            expect(cell.getAttribute("data-matrix-status")).toBe("INVALID");
+            expect(cell.getAttribute("data-matrix-issue")).toBe("invalid-coordinate");
+            expect(cell.getAttribute("data-matrix-reason")).toBe("invalid-coordinate");
+            expect(cell.getAttribute("data-matrix-capacity")).toBe("");
+        }
+        for (const row of rows.slice(2)) {
+            expect(matrixCell(row, "P1").getAttribute("data-matrix-status")).toBe("UNSUPPORTED");
+        }
+        expect(matrixOverall(rows[0]).getAttribute("data-matrix-all-pass")).toBe("false");
+    });
+
+    test("marks a crane as passing every pick only when all five picks pass", async () => {
+        const restore = installEnglishLocale();
+        try {
+            const { content } = await openPickDialog();
+            enterMastAndJib(content, "0", "0", "30");
+
+            // Make each sample pick a 2.6 t lift at a 30 m radius from mast (0, 0).
+            // MCT 88 at 30 m: 81 / 30 = 2.70 t -> 2.6 / 2.70 = 96.3 % PASS.
+            // MCT 85 F5 at 30 m: 2.50 t -> 2.6 / 2.50 = 104.0 % FAIL.
+            for (const pickRow of tableRows(content)) {
+                setRowInput(pickRow, "load", "2.6");
+                setRowInput(pickRow, "supply-x", "30");
+                setRowInput(pickRow, "supply-y", "0");
+                setRowInput(pickRow, "drop-x", "0");
+                setRowInput(pickRow, "drop-y", "0");
+            }
+
+            expect(matrixState(content)).toBe("cranes-pass");
+
+            const rows = matrixRows(content);
+            expect(matrixOverall(rows[0]).getAttribute("data-matrix-all-pass")).toBe("true");
+            expect(matrixOverall(rows[0]).getAttribute("data-matrix-passing")).toBe("5");
+            expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-capacity")).toBe("2.70");
+            expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-utilisation")).toBe("96.3");
+
+            expect(matrixOverall(rows[1]).getAttribute("data-matrix-all-pass")).toBe("false");
+            expect(matrixOverall(rows[1]).getAttribute("data-matrix-passing")).toBe("0");
+            expect(matrixCell(rows[1], "P1").getAttribute("data-matrix-capacity")).toBe("2.50");
+            expect(matrixCell(rows[1], "P1").getAttribute("data-matrix-utilisation")).toBe("104.0");
+
+            for (const row of rows.slice(2)) {
+                expect(matrixOverall(row).getAttribute("data-matrix-unsupported")).toBe("true");
+                expect(matrixOverall(row).getAttribute("data-matrix-all-pass")).toBe("false");
+            }
+
+            const summary = content.querySelector('[data-role="matrix-summary"]');
+            expect(summary).not.toBeNull();
+            if (summary === null) throw new Error("Matrix summary is missing.");
+            expect(summary.getAttribute("data-passing-cranes")).toBe("1");
+            expect(summary.getAttribute("data-state")).toBe("cranes-pass");
+            expect(summary.textContent).toBe(
+                "1 of 2 evaluated catalogued cranes pass every pick: Potain MCT 88. 2 luffing-jib crane(s) were not evaluated.",
+            );
+        } finally {
+            restore();
+        }
     });
 });

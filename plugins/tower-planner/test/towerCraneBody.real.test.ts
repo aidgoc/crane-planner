@@ -3,11 +3,10 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { initWasm } from "@chili3d/wasm";
-import { ShapeFactory } from "@chili3d/wasm";
-import { Plane, XYZ, ShapeTypes, BoundingBox } from "@chili3d/core";
-import { metresToMillimetres } from "../src/units";
+import { type BoundingBox, Plane, ShapeTypes, XYZ } from "@chili3d/core";
+import { initWasm, ShapeFactory } from "@chili3d/wasm";
 import { beforeAll, describe, expect, test } from "@rstest/core";
+import { metresToMillimetres } from "../src/units";
 
 let factory: ShapeFactory;
 
