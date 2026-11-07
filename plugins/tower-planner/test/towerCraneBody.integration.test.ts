@@ -3,14 +3,19 @@
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { initWasm } from "@chili3d/wasm";
-import { OccShapeProvider } from "@chili3d/wasm";
-import { setCurrentApplication, getCurrentApplication } from "@chili3d/core";
-import { Plane, XYZ, ShapeTypes, BoundingBox } from "@chili3d/core";
-import { metresToMillimetres, MCT88 } from "../src/catalogue";
-import { TowerCraneBodyNode } from "../src/body/towerCraneBody";
+import {
+    BoundingBox,
+    getCurrentApplication,
+    Plane,
+    ShapeTypes,
+    setCurrentApplication,
+    XYZ,
+} from "@chili3d/core";
 import { createMockDocument } from "@chili3d/core/test-utils";
+import { initWasm, OccShapeProvider } from "@chili3d/wasm";
 import { beforeAll, beforeEach, describe, expect, test } from "@rstest/core";
+import { TowerCraneBodyNode } from "../src/body/towerCraneBody";
+import { MCT88, metresToMillimetres } from "../src/catalogue";
 
 let provider: OccShapeProvider;
 

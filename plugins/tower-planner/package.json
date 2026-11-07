@@ -1,7 +1,7 @@
 {
     "name": "tower-planner",
     "version": "0.1.0",
-    "description": "DGOC tower-crane catalogue, capacity, pick-check, placement and clearance plugin for Chili3D",
+    "description": "DGOC tower-crane catalogue, capacity, pick-check, placement, oversail, height and clearance plugin for Chili3D",
     "main": "extension.js",
     "type": "module",
     "scripts": {

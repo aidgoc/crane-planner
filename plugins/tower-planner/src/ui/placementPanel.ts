@@ -15,10 +15,41 @@ import {
     PLANNING_DISCLAIMER,
     validateCraneCatalogue,
 } from "../model/cranePlacement";
+import { createDefaultHeightParameters, evaluateHeightChecks } from "../model/heightChecks";
+import type { HeightParameters, HeightStatus } from "../model/heightTypes";
+import { evaluateOversailChecks } from "../model/oversailChecks";
+import type { OversailSite, OversailStatus } from "../model/oversailTypes";
+import { SITE_DATA_UNAVAILABLE } from "../model/siteSnapshot";
 import { CraneScene } from "../view/craneScene";
 import style from "./placementPanel.module.css";
 
 const MAST_PICK_RADIUS_PX = 24;
+
+const STATUS_LABELS: Record<OversailStatus, string> = {
+    pass: "PASS",
+    fail: "FAIL",
+    permission_needed: "PERMISSION NEEDED",
+};
+
+const STATUS_CLASSES: Record<OversailStatus, string> = {
+    pass: style.statusPass,
+    fail: style.statusFail,
+    permission_needed: style.statusPermission,
+};
+
+const HEIGHT_STATUS_LABELS: Record<HeightStatus, string> = {
+    pass: "PASS",
+    fail: "FAIL",
+    tie_in_required: "TIE-IN REQUIRED",
+    unavailable: "UNAVAILABLE",
+};
+
+const HEIGHT_STATUS_CLASSES: Record<HeightStatus, string> = {
+    pass: style.statusPass,
+    fail: style.statusFail,
+    tie_in_required: style.statusTieIn,
+    unavailable: style.statusUnavailable,
+};
 
 type ResultRow = {
     readonly element: HTMLElement;
@@ -42,7 +73,12 @@ function formatNumber(value: number, digits = 3): string {
 }
 
 function formatPoint(point: { x: number; y: number }): string {
-    return `(${point.x.toFixed(2)}, ${point.y.toFixed(2)}) m`;
+    return `(${formatCoordinate(point.x)}, ${formatCoordinate(point.y)}) m`;
+}
+
+function formatCoordinate(value: number): string {
+    const normalized = Math.abs(value) < 0.005 ? 0 : value;
+    return normalized.toFixed(2);
 }
 
 export class TowerCranePlacementPanel {
@@ -55,19 +91,33 @@ export class TowerCranePlacementPanel {
     private readonly minHookRadius: HTMLInputElement;
     private readonly maxHookRadius: HTMLInputElement;
     private readonly counterJibRadius: HTMLInputElement;
+    private readonly hookHeight: HTMLInputElement;
+    private readonly hookClearance: HTMLInputElement;
+    private readonly freestandingHeight: HTMLInputElement;
+    private readonly tieInSpacing: HTMLInputElement;
     private readonly errors: HTMLElement;
     private readonly results: ResultRows;
+    private readonly clearanceStatus: HTMLElement;
+    private readonly clearanceRows: HTMLElement;
+    private readonly heightStatus: HTMLElement;
+    private readonly heightRows: HTMLElement;
+    private readonly heightErrors: HTMLElement;
 
     private catalogue = createDefaultCraneCatalogue();
+    private heights: HeightParameters = createDefaultHeightParameters();
     private placement: CranePlacement = { ...DEFAULT_TOWER_CRANE_PLACEMENT };
     private layout: CraneLayout = deriveCraneLayout(this.catalogue, this.placement);
+    private valid = true;
     private dom: HTMLElement | undefined;
     private dragPointerId: number | undefined;
     private disposed = false;
     private shown = false;
     private onDisposeCallback: (() => void) | undefined;
 
-    constructor(private readonly view: IView) {
+    constructor(
+        private view: IView,
+        private readonly site?: OversailSite,
+    ) {
         this.scene = new CraneScene(view);
         this.mastX = this.createNumberInput(this.placement.x);
         this.mastY = this.createNumberInput(this.placement.y);
@@ -76,6 +126,10 @@ export class TowerCranePlacementPanel {
         this.minHookRadius = this.createNumberInput(this.catalogue.minHookRadius.value);
         this.maxHookRadius = this.createNumberInput(this.catalogue.maxHookRadius.value);
         this.counterJibRadius = this.createNumberInput(this.catalogue.counterJibRadius.value);
+        this.hookHeight = this.createNumberInput(this.heights.hookHeight.value);
+        this.hookClearance = this.createNumberInput(this.heights.hookClearance.value);
+        this.freestandingHeight = this.createNumberInput(this.heights.freestandingHeight.value);
+        this.tieInSpacing = this.createNumberInput(this.heights.tieInSpacing.value);
         this.errors = div({ className: style.errors, role: "alert" });
 
         this.results = {
@@ -88,6 +142,12 @@ export class TowerCranePlacementPanel {
             counterTip: this.createResultRow("Counter-jib tip"),
             baseRing: this.createResultRow("Base exclusion"),
         };
+        this.clearanceStatus = div({ className: style.clearanceStatus, textContent: "—" });
+        this.clearanceRows = div({ className: style.clearanceRows });
+        this.heightStatus = div({ className: style.clearanceStatus, textContent: "—" });
+        this.heightRows = div({ className: style.clearanceRows });
+        this.heightErrors = div({ className: style.errors, role: "status" });
+        this.heightErrors.hidden = true;
 
         this.slewSlider.value = String(this.layout.slewAngleDeg);
         this.root = this.createContent();
@@ -106,9 +166,10 @@ export class TowerCranePlacementPanel {
         if (this.disposed || this.shown) return;
         this.shown = true;
 
-        this.scene.update(this.layout);
-        this.renderResults(this.layout);
+        this.refresh();
         PubSub.default.sub("documentClosed", this.handleDocumentClosed);
+        PubSub.default.sub("viewClosed", this.handleViewClosed);
+        PubSub.default.sub("activeViewChanged", this.handleActiveViewChanged);
         PubSub.default.pub("showFloatPanel", {
             title: "towerplanner.panel.title" as I18nKeys,
             content: this.root,
@@ -153,6 +214,28 @@ export class TowerCranePlacementPanel {
                 ),
             ),
             this.createSection(
+                "Height and tie-in",
+                this.createDimensionField(
+                    "Hook height (available)",
+                    this.heights.hookHeight,
+                    this.hookHeight,
+                ),
+                this.createDimensionField("Hook clearance", this.heights.hookClearance, this.hookClearance),
+                this.createDimensionField(
+                    "Freestanding height",
+                    this.heights.freestandingHeight,
+                    this.freestandingHeight,
+                ),
+                this.createDimensionField("Tie-in spacing", this.heights.tieInSpacing, this.tieInSpacing),
+                div(
+                    { className: style.note },
+                    "Building heights come from the shared site model. The tallest individual roof above ground controls; roof heights are not added together (a 9 m podium under Tower A 75 m does not make 84 m). Height inputs and tie-in levels are INDICATIVE; the crane supplier's schedule governs.",
+                ),
+                this.heightStatus,
+                this.heightRows,
+                this.heightErrors,
+            ),
+            this.createSection(
                 "Placement",
                 this.createPlainField("Mast X", this.mastX),
                 this.createPlainField("Mast Y", this.mastY),
@@ -170,6 +253,7 @@ export class TowerCranePlacementPanel {
                 this.results.counterTip.element,
                 this.results.baseRing.element,
             ),
+            this.createSection("Clearance checks", this.clearanceStatus, this.clearanceRows),
             this.errors,
         );
     }
@@ -239,6 +323,10 @@ export class TowerCranePlacementPanel {
         this.minHookRadius.addEventListener("input", this.handleFieldInput);
         this.maxHookRadius.addEventListener("input", this.handleFieldInput);
         this.counterJibRadius.addEventListener("input", this.handleFieldInput);
+        this.hookHeight.addEventListener("input", this.handleFieldInput);
+        this.hookClearance.addEventListener("input", this.handleFieldInput);
+        this.freestandingHeight.addEventListener("input", this.handleFieldInput);
+        this.tieInSpacing.addEventListener("input", this.handleFieldInput);
         this.slewNumber.addEventListener("input", this.handleFieldInput);
         this.slewSlider.addEventListener("input", this.handleSliderInput);
     }
@@ -267,8 +355,18 @@ export class TowerCranePlacementPanel {
             y: this.mastY.valueAsNumber,
             slewAngleDeg: this.slewNumber.valueAsNumber,
         };
+        const heights: HeightParameters = {
+            hookHeight: { ...this.heights.hookHeight, value: this.hookHeight.valueAsNumber },
+            hookClearance: { ...this.heights.hookClearance, value: this.hookClearance.valueAsNumber },
+            freestandingHeight: {
+                ...this.heights.freestandingHeight,
+                value: this.freestandingHeight.valueAsNumber,
+            },
+            tieInSpacing: { ...this.heights.tieInSpacing, value: this.tieInSpacing.valueAsNumber },
+        };
 
         this.catalogue = catalogue;
+        this.heights = heights;
         this.placement = placement;
         this.refresh();
     }
@@ -283,12 +381,31 @@ export class TowerCranePlacementPanel {
         }
 
         this.setErrors(validation);
-        if (validation.length > 0) return;
+        this.renderHeight();
+        this.valid = validation.length === 0;
+        if (!this.valid) {
+            this.clearInvalidState();
+            return;
+        }
 
         this.layout = deriveCraneLayout(this.catalogue, this.placement);
         this.slewSlider.value = String(this.layout.slewAngleDeg);
         this.scene.update(this.layout);
         this.renderResults(this.layout);
+        this.renderClearance(this.layout);
+    }
+
+    private clearInvalidState() {
+        this.scene.clear();
+        this.clearClearance();
+        this.results.mast.value.textContent = "—";
+        this.results.slew.value.textContent = "—";
+        this.results.minRing.value.textContent = "—";
+        this.results.maxRing.value.textContent = "—";
+        this.results.counterRing.value.textContent = "—";
+        this.results.jibTip.value.textContent = "—";
+        this.results.counterTip.value.textContent = "—";
+        this.results.baseRing.value.textContent = "—";
     }
 
     private setErrors(errors: string[]) {
@@ -305,6 +422,93 @@ export class TowerCranePlacementPanel {
         this.results.jibTip.value.textContent = formatPoint(layout.jibTip);
         this.results.counterTip.value.textContent = formatPoint(layout.counterJibTip);
         this.results.baseRing.value.textContent = `${layout.rings.baseExclusion.radius.toFixed(2)} m`;
+    }
+
+    private renderClearance(layout: CraneLayout) {
+        if (!this.site) {
+            this.clearClearance();
+            this.clearanceStatus.className = `${style.clearanceStatus} ${style.statusUnavailable}`;
+            this.clearanceStatus.textContent = `${SITE_DATA_UNAVAILABLE} — no boundary polygon supplied. Clearance checks were not performed.`;
+            return;
+        }
+
+        const report = evaluateOversailChecks({
+            mast: layout.mast,
+            swingRadiusM: layout.catalogue.maxHookRadius.value,
+            site: this.site,
+        });
+
+        this.clearanceStatus.className = `${style.clearanceStatus} ${STATUS_CLASSES[report.overallStatus]}`;
+        this.clearanceStatus.textContent = `Overall: ${STATUS_LABELS[report.overallStatus]}`;
+        this.clearanceRows.replaceChildren();
+
+        for (const result of report.results) {
+            const row = div({ className: `${style.checkRow} ${STATUS_CLASSES[result.status]}` });
+            row.setAttribute("data-check-id", result.id);
+            row.setAttribute("data-check-status", result.status);
+            row.append(
+                div(
+                    { className: style.checkHead },
+                    span({ className: style.checkLabel, textContent: result.label }),
+                    span({
+                        className: `${style.checkStatus} ${STATUS_CLASSES[result.status]}`,
+                        textContent: STATUS_LABELS[result.status],
+                    }),
+                ),
+                div({ className: style.checkMessage, textContent: result.message }),
+            );
+            this.clearanceRows.append(row);
+        }
+    }
+
+    private clearClearance() {
+        this.clearanceRows.replaceChildren();
+        this.clearanceStatus.className = style.clearanceStatus;
+        this.clearanceStatus.textContent = "—";
+    }
+
+    private renderHeight() {
+        const report = evaluateHeightChecks({
+            buildings: this.site?.buildings ?? [],
+            hookHeightM: this.heights.hookHeight.value,
+            hookClearanceM: this.heights.hookClearance.value,
+            freestandingHeightM: this.heights.freestandingHeight.value,
+            tieInSpacingM: this.heights.tieInSpacing.value,
+        });
+
+        this.heightErrors.hidden = report.errors.length === 0;
+        this.heightErrors.textContent = report.errors.join(" ");
+
+        if (!report.valid) {
+            this.heightStatus.className = `${style.clearanceStatus} ${style.statusUnavailable}`;
+            this.heightStatus.textContent = "UNAVAILABLE — height check was not performed.";
+            this.heightRows.replaceChildren();
+            return;
+        }
+
+        this.heightStatus.className = `${style.clearanceStatus} ${
+            HEIGHT_STATUS_CLASSES[report.overallStatus]
+        }`;
+        this.heightStatus.textContent = `Overall: ${HEIGHT_STATUS_LABELS[report.overallStatus]}`;
+        this.heightRows.replaceChildren();
+
+        for (const result of report.results) {
+            const row = div({ className: `${style.checkRow} ${HEIGHT_STATUS_CLASSES[result.status]}` });
+            row.setAttribute("data-height-id", result.id);
+            row.setAttribute("data-height-status", result.status);
+            row.append(
+                div(
+                    { className: style.checkHead },
+                    span({ className: style.checkLabel, textContent: result.label }),
+                    span({
+                        className: `${style.checkStatus} ${HEIGHT_STATUS_CLASSES[result.status]}`,
+                        textContent: HEIGHT_STATUS_LABELS[result.status],
+                    }),
+                ),
+                div({ className: style.checkMessage, textContent: result.message }),
+            );
+            this.heightRows.append(row);
+        }
     }
 
     private syncMastInputs() {
@@ -403,7 +607,7 @@ export class TowerCranePlacementPanel {
     }
 
     private isNearMast(event: PointerEvent): boolean {
-        if (!this.dom) return false;
+        if (!this.valid || !this.dom) return false;
 
         const rect = this.dom.getBoundingClientRect();
         const mast = new XYZ(
@@ -423,16 +627,47 @@ export class TowerCranePlacementPanel {
         }
     };
 
+    private readonly handleViewClosed = (view: IView) => {
+        if (view === this.view) {
+            this.dispose(false);
+        }
+    };
+
+    private readonly handleActiveViewChanged = (view: IView | undefined) => {
+        if (this.disposed || view === this.view) return;
+        if (view === undefined || view.document !== this.view.document) {
+            this.dispose(false);
+            return;
+        }
+        this.rebindView(view);
+    };
+
+    private rebindView(view: IView) {
+        if (this.disposed || view === this.view) return;
+
+        this.detachViewEvents();
+        this.scene.setView(view);
+        this.view = view;
+        this.refresh();
+        this.attachViewEvents();
+    }
+
     dispose(updateScene = true) {
         if (this.disposed) return;
         this.disposed = true;
 
         PubSub.default.remove("documentClosed", this.handleDocumentClosed);
+        PubSub.default.remove("viewClosed", this.handleViewClosed);
+        PubSub.default.remove("activeViewChanged", this.handleActiveViewChanged);
         this.mastX.removeEventListener("input", this.handleFieldInput);
         this.mastY.removeEventListener("input", this.handleFieldInput);
         this.minHookRadius.removeEventListener("input", this.handleFieldInput);
         this.maxHookRadius.removeEventListener("input", this.handleFieldInput);
         this.counterJibRadius.removeEventListener("input", this.handleFieldInput);
+        this.hookHeight.removeEventListener("input", this.handleFieldInput);
+        this.hookClearance.removeEventListener("input", this.handleFieldInput);
+        this.freestandingHeight.removeEventListener("input", this.handleFieldInput);
+        this.tieInSpacing.removeEventListener("input", this.handleFieldInput);
         this.slewNumber.removeEventListener("input", this.handleFieldInput);
         this.slewSlider.removeEventListener("input", this.handleSliderInput);
 
