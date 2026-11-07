@@ -25,7 +25,7 @@ Planner. The catalogue contains two verified entries:
 | `src/geometry/oversailGeometry.ts` | T8 geometry helpers for boundaries, neighbours, no-go zones, roads and power lines. |
 | `src/model/oversailChecks.ts` | T8 oversail checks with PASS/FAIL/PERMISSION NEEDED results. |
 | `src/model/oversailTypes.ts` | T8 site, obstacle and check-result types. |
-| `src/model/siteSnapshot.ts` | Adapts the shared v1 site format and the legacy sample file into an `OversailSite`. |
+| `src/model/siteSnapshot.ts` | Adapts the shared v1 site format and the legacy sample file into an `OversailSite`, including metre-unit validation. |
 | `src/model/heightChecks.ts` | Pure T9 hook-height, freestanding-height and tie-in checks. |
 | `src/model/heightTypes.ts` | T9 height inputs, results and status types. |
 | `src/ui/placementPanel.ts` | Live float panel for mast position, slew, INDICATIVE radii, oversail and height checks. |
@@ -73,7 +73,7 @@ The placement panel recalculates clearance checks on every valid change and show
 
 The check covers the jib/full hook envelope only, not the counter-jib. Supply zones (`S1` rebar yard, `S2` formwork store, `S3` concrete pump) are not treated as obstacles. Proposed buildings are not treated as neighbours unless they are explicitly named in the neighbour rule arrays.
 
-`src/model/siteSnapshot.ts` adapts the shared v1 site format and the legacy sample file into an `OversailSite`. The legacy sample has no boundary vertex list; the panel then shows `Site data unavailable...` and does not report a boundary result. Boundary geometry is never approximated from plot width/depth.
+`src/model/siteSnapshot.ts` adapts the shared v1 site format and the legacy sample file into an `OversailSite`. The adapter requires metre units (`units: "m"`); missing, unsupported or invalid units are rejected before any check runs. The legacy sample has no boundary vertex list; the panel then shows `Site data unavailable...` and does not report a boundary result. Boundary geometry is never approximated from plot width/depth.
 
 ## T9 height and tie-in checks
 
@@ -86,6 +86,18 @@ The check covers the jib/full hook envelope only, not the counter-jib. Supply zo
 - **Tie-in levels** — INDICATIVE levels above ground, starting at the freestanding limit and repeating every tie-in spacing until the required hook height is covered. For 77 m required, 50 m freestanding and 20 m spacing: 50 m, 70 m. The crane supplier's tie-in schedule governs.
 
 Hook height, hook clearance, freestanding height and tie-in spacing are all shown as `INDICATIVE`; replace them with the supplied crane configuration or the project/standard value and cite the source. Missing or invalid building heights make the height check `UNAVAILABLE` rather than passing silently.
+
+## Shared site data source
+
+The site-model plugin owns the production DXF path: `src/siteSource.ts` exposes `loadSiteProjectFromDxf` and `loadSiteProjectFromUrl`. `PlaceTowerCraneCommand` loads the shared `sample-site/sample-site.dxf` through that source, validates it with the site-model schema, then adapts the resulting `SiteProject` with `adaptSiteSnapshot`. There is no second site schema and no invented `document.userData` key.
+
+The fixed `sample-site/sample-site.dxf` URL is an **interim** site-data source. It is used only until a project-file picker or an active shared-site selection is implemented; it is not a project-file selector and does not represent a user's site. The sample data and its limitations are documented in `public/sample-site/README.md`.
+
+If the DXF cannot be fetched or parsed, or adaptation fails, the command shows the `towerplanner.site.unavailable` toast and opens the panel without site data. T8 and T9 then report `UNAVAILABLE`; they never substitute a fabricated site or return a false `PASS`.
+
+## Placement persistence
+
+The crane placement is a **temporary plan overlay**, not a persistent document node. It is drawn as overlay meshes by `CraneScene`, is not written to the document or `document.userData`, and is not serialized. Closing the panel, closing the view or document, or disposing the panel removes the overlay meshes. Persistent crane document storage is not implemented in this PR.
 
 **Planning aid, not a certified lift plan.**
 

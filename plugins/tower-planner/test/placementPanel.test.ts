@@ -153,7 +153,7 @@ test("dragging the mast updates inputs and results live", () => {
     expect(mastY.value).toBe("0");
     expect(resultValue(content, "Mast")).toBe("(0.10, 0.00) m");
     expect(resultValue(content, "Max hook ring")).toBe("40.00 m");
-    expect(resultValue(content, "Base exclusion")).toBe("20.00 m");
+    expect(resultValue(content, "Base exclusion (INDICATIVE)")).toBe("20.00 m");
     panel.dispose();
 });
 

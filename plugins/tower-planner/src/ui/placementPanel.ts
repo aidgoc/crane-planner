@@ -140,7 +140,7 @@ export class TowerCranePlacementPanel {
             counterRing: this.createResultRow("Counter-jib sweep"),
             jibTip: this.createResultRow("Jib tip"),
             counterTip: this.createResultRow("Counter-jib tip"),
-            baseRing: this.createResultRow("Base exclusion"),
+            baseRing: this.createResultRow("Base exclusion (INDICATIVE)"),
         };
         this.clearanceStatus = div({ className: style.clearanceStatus, textContent: "—" });
         this.clearanceRows = div({ className: style.clearanceRows });

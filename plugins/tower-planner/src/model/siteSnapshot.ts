@@ -26,6 +26,7 @@ interface BuildingLike {
 
 export interface SiteProjectLike {
     readonly schema_version?: string;
+    readonly units?: unknown;
     readonly boundary?: { readonly polygon?: unknown; readonly source?: string };
     readonly buildings?: Record<string, BuildingLike>;
     readonly no_go_zones?: readonly unknown[];
@@ -90,6 +91,19 @@ export function neighbourDisplayName(label: string, id: string): string {
         text = id.toLowerCase().replace(/_/g, " ");
     }
     return text.startsWith("the ") ? text : `the ${text}`;
+}
+
+function adaptUnits(value: unknown, source: string): Result<"m", string> {
+    if (value === undefined) {
+        return Result.err(`${SITE_DATA_UNAVAILABLE}: ${source} units are missing; expected 'm'.`);
+    }
+    if (typeof value !== "string" || !value.trim()) {
+        return Result.err(`${SITE_DATA_UNAVAILABLE}: ${source} units are invalid; expected 'm'.`);
+    }
+    if (value !== "m") {
+        return Result.err(`${SITE_DATA_UNAVAILABLE}: unsupported ${source} units '${value}'; expected 'm'.`);
+    }
+    return Result.ok("m");
 }
 
 function adaptNoGoZones(zones: unknown): Result<OversailNoGoZone[], string> {
@@ -218,6 +232,9 @@ export function adaptSiteProject(project: SiteProjectLike): Result<OversailSite,
         return Result.err(`${SITE_DATA_UNAVAILABLE}: site project must be an object.`);
     }
 
+    const units = adaptUnits(project.units, "site project");
+    if (!units.isOk) return Result.err(units.error);
+
     const boundaryPolygon = toPolygon(project.boundary?.polygon);
     if (!boundaryPolygon) {
         return Result.err(`${SITE_DATA_UNAVAILABLE}: site boundary polygon is required.`);
@@ -259,6 +276,8 @@ export function adaptLegacySampleSite(
     if (!isRecord(input)) {
         return Result.err(`${SITE_DATA_UNAVAILABLE}: legacy sample site must be an object.`);
     }
+    const units = adaptUnits(read(input, "units"), "legacy sample site");
+    if (!units.isOk) return Result.err(units.error);
     if (!boundaryPolygon || boundaryPolygon.length < 3) {
         return Result.err(
             `${SITE_DATA_UNAVAILABLE}: boundary polygon is required; legacy sample data does not contain one.`,

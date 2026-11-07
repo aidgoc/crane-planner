@@ -9,6 +9,9 @@
         "preview": "npm run build && echo 'Debug URL: http://localhost:8080?plugin=http://localhost:8687' && npx servitsy -p 8687 --cors",
         "package": "npm run build && node ../scripts/package-plugin.mjs dist/tower-planner.chiliplugin manifest.json importmap.json icons dist"
     },
+    "dependencies": {
+        "dxf-parser": "^1.1.2"
+    },
     "keywords": [
         "chili3d",
         "plugin",

@@ -7,6 +7,7 @@ import { REQUIRED_DISCLAIMER } from "./types";
 export * from "./dxfParser";
 export * from "./extrusion";
 export * from "./schema";
+export * from "./siteSource";
 export * from "./types";
 
 const SiteModelPlugin: Plugin = {

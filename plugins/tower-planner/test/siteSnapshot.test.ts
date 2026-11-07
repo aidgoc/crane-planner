@@ -61,6 +61,7 @@ test("legacy sample adapter exposes building heights for T9 and excludes supply 
 test("v1 adapter keeps supplied heights and marks missing heights as unavailable", () => {
     const result = adaptSiteProject({
         schema_version: "1.0",
+        units: "m",
         boundary: { polygon: rect(0, 0, 90, 72) },
         buildings: {
             tower_a: { id: "tower_a", label: "TOWER A", polygon: rect(25, 20, 65, 42), height_m: 75 },
@@ -88,6 +89,7 @@ test("legacy sample adapter refuses to invent a boundary polygon", () => {
 test("v1 adapter reads boundary, rule arrays, no-go zones, road and power line", () => {
     const project: SiteProjectLike = {
         schema_version: "1.0",
+        units: "m",
         boundary: { polygon: rect(0, 0, 90, 72), source: "survey" },
         buildings: {
             school: {
@@ -131,6 +133,7 @@ test("v1 adapter reads boundary, rule arrays, no-go zones, road and power line",
 test("v1 adapter fails when a rule references a missing building", () => {
     const project: SiteProjectLike = {
         schema_version: "1.0",
+        units: "m",
         boundary: { polygon: rect(0, 0, 90, 72) },
         buildings: {},
         no_oversail: ["missing"],
@@ -142,9 +145,51 @@ test("v1 adapter fails when a rule references a missing building", () => {
     expect(result.error).toContain("neighbour 'missing'");
 });
 
+test("v1 adapter rejects missing metre units before calculating", () => {
+    const result = adaptSiteProject({
+        schema_version: "1.0",
+        boundary: { polygon: rect(0, 0, 90, 72) },
+        buildings: {},
+        no_oversail: [],
+        oversail_by_permission: [],
+    });
+
+    expect(result.isOk).toBe(false);
+    expect(result.error).toContain(SITE_DATA_UNAVAILABLE);
+    expect(result.error).toContain("units are missing");
+});
+
+test("v1 adapter rejects unsupported and invalid units explicitly", () => {
+    const makeProject = (units: unknown): SiteProjectLike => ({
+        schema_version: "1.0",
+        units,
+        boundary: { polygon: rect(0, 0, 90, 72) },
+        buildings: {},
+        no_oversail: [],
+        oversail_by_permission: [],
+    });
+
+    const millimetres = adaptSiteProject(makeProject("mm"));
+    expect(millimetres.isOk).toBe(false);
+    expect(millimetres.error).toContain("unsupported site project units 'mm'");
+
+    const blank = adaptSiteProject(makeProject(""));
+    expect(blank.isOk).toBe(false);
+    expect(blank.error).toContain("units are invalid");
+});
+
+test("legacy sample adapter rejects missing metre units", () => {
+    const result = adaptLegacySampleSite({ ...sampleSite, units: undefined }, rect(0, 0, 90, 72));
+
+    expect(result.isOk).toBe(false);
+    expect(result.error).toContain(SITE_DATA_UNAVAILABLE);
+    expect(result.error).toContain("units are missing");
+});
+
 test("site snapshot adapter dispatches v1 data and legacy data", () => {
     const v1 = adaptSiteSnapshot({
         schema_version: "1.0",
+        units: "m",
         boundary: { polygon: rect(0, 0, 90, 72), source: "survey" },
         buildings: {},
         no_oversail: [],
