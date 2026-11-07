@@ -6,11 +6,38 @@ import type {
     ReportAssumption,
     ReportData,
     ReportMetric,
+    ReportPlanView,
     ReportSection,
     ReportSource,
     ReportTableColumn,
     ReportTableRow,
 } from "./types";
+import {
+    ASSUMPTION_CATEGORIES,
+    METRIC_STATUSES,
+    REPORT_PRODUCTS,
+    SOURCE_STATUSES,
+    VERDICT_STATUSES,
+} from "./types";
+
+const MISSING = "—";
+const PLAN_IMAGE_DATA_URL = /^data:image\/(png|jpeg|gif|webp|svg\+xml)[;,]/i;
+
+/** True when a value must not be printed as it is: undefined, null, NaN, Infinity or blank text. */
+function isMissing(value: unknown): boolean {
+    if (value === undefined || value === null) return true;
+    if (typeof value === "number") return !Number.isFinite(value);
+    if (typeof value === "string") {
+        const t = value.trim();
+        return t === "" || /^(undefined|null|nan|-?infinity)$/i.test(t);
+    }
+    return false;
+}
+
+/** Text for a value in the report. A missing value is shown as an em dash, never as "NaN" or "undefined". */
+function formatValue(value: unknown): string {
+    return isMissing(value) ? MISSING : escapeHtml(String(value).trim());
+}
 
 /**
  * Escapes HTML characters to prevent XSS or broken formatting in generated reports.
@@ -157,6 +184,12 @@ function getReportStyles(): string {
         .badge-FAIL { background: var(--fail-bg); color: var(--fail-text); }
         .badge-WARN { background: var(--warn-bg); color: var(--warn-text); }
         .badge-INFO { background: var(--info-bg); color: var(--info-text); }
+        .badge-OUT_OF_RANGE, .badge-INVALID { background: var(--fail-bg); color: var(--fail-text); }
+        .badge-UNSUPPORTED, .badge-NOT_CHECKED, .badge-NOT_STATED {
+            background: #f1f5f9;
+            color: #334155;
+            border: 1px dashed #64748b;
+        }
         .badge-INDICATIVE { background: #ffedd5; color: #9a3412; border: 1px solid #fdba74; }
         .badge-VERIFIED { background: #dcfce7; color: #166534; }
         .badge-LEGACY { background: #f1f5f9; color: #475569; }
@@ -184,6 +217,25 @@ function getReportStyles(): string {
             background: var(--warn-bg);
             border-color: #fde68a;
             color: var(--warn-text);
+        }
+
+        .verdict-box.verdict-INCOMPLETE {
+            background: var(--warn-bg);
+            border-color: #fde68a;
+            color: var(--warn-text);
+        }
+
+        tr.row-status-FAIL td, tr.row-status-OUT_OF_RANGE td, tr.row-status-INVALID td {
+            background: var(--fail-bg) !important;
+        }
+        tr.row-status-WARN td { background: var(--warn-bg) !important; }
+        tr.row-status-UNSUPPORTED td, tr.row-status-NOT_CHECKED td { background: #f1f5f9 !important; }
+
+        ul.notes-list {
+            list-style: disc;
+            margin-left: 20px;
+            font-size: 12px;
+            color: var(--text-muted);
         }
 
         .verdict-title {
@@ -337,6 +389,11 @@ function getReportStyles(): string {
         }
 
         @media print {
+            * {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+
             body {
                 background: #ffffff;
                 padding: 0;
@@ -377,13 +434,14 @@ function getReportStyles(): string {
 function renderMetricsSection(metrics: readonly ReportMetric[]): string {
     const cards = metrics.map((m) => {
         const statusBadge = m.status ? `<span class="badge badge-${m.status}">${m.status}</span>` : "";
-        const unitHtml = m.unit ? `<span class="metric-unit">${escapeHtml(m.unit)}</span>` : "";
+        const unitHtml =
+            m.unit && !isMissing(m.value) ? `<span class="metric-unit">${escapeHtml(m.unit)}</span>` : "";
         const notesHtml = m.notes ? `<div class="metric-notes">${escapeHtml(m.notes)}</div>` : "";
         return `
             <div class="metric-card">
                 <div class="metric-label">${escapeHtml(m.label)}</div>
                 <div class="metric-val-row">
-                    <span class="metric-value">${escapeHtml(String(m.value))}${unitHtml}</span>
+                    <span class="metric-value">${formatValue(m.value)}${unitHtml}</span>
                     ${statusBadge}
                 </div>
                 ${notesHtml}
@@ -394,26 +452,32 @@ function renderMetricsSection(metrics: readonly ReportMetric[]): string {
 }
 
 function renderTableSection(columns: readonly ReportTableColumn[], rows: readonly ReportTableRow[]): string {
-    const headerCells = columns
-        .map((c) => {
-            const unit = c.unit ? ` (${escapeHtml(c.unit)})` : "";
-            const alignAttr = c.align ? ` class="align-${c.align}"` : "";
-            return `<th${alignAttr}>${escapeHtml(c.header)}${unit}</th>`;
-        })
-        .join("");
+    // A row status is shown as a text badge in its own column, so it can be read without colour
+    // (for example on a black and white print).
+    const hasStatus = rows.some((r) => r.status);
+    const headerCells =
+        columns
+            .map((c) => {
+                const unit = c.unit ? ` (${escapeHtml(c.unit)})` : "";
+                const alignAttr = c.align ? ` class="align-${c.align}"` : "";
+                return `<th${alignAttr}>${escapeHtml(c.header)}${unit}</th>`;
+            })
+            .join("") + (hasStatus ? '<th class="align-center">Status</th>' : "");
 
     const bodyRows = rows
         .map((r) => {
             const rowCells = columns
                 .map((c) => {
-                    const rawVal = r.cells[c.key];
-                    const val = rawVal !== undefined ? escapeHtml(String(rawVal)) : "—";
+                    const val = formatValue(r.cells[c.key]);
                     const alignAttr = c.align ? ` class="align-${c.align}"` : "";
                     return `<td${alignAttr}>${val}</td>`;
                 })
                 .join("");
+            const statusCell = hasStatus
+                ? `<td class="align-center">${r.status ? `<span class="badge badge-${r.status}">${r.status}</span>` : MISSING}</td>`
+                : "";
             const statusClass = r.status ? ` class="row-status-${r.status}"` : "";
-            return `<tr${statusClass}>${rowCells}</tr>`;
+            return `<tr${statusClass}>${rowCells}${statusCell}</tr>`;
         })
         .join("");
 
@@ -477,20 +541,116 @@ function renderAssumptions(assumptions: readonly ReportAssumption[]): string {
     return `<ul class="assumptions-list">${items}</ul>`;
 }
 
+function requireText(value: unknown, name: string): void {
+    if (typeof value !== "string" || value.trim() === "") {
+        throw new RangeError(`ReportData.${name} is required (non-empty text)`);
+    }
+}
+
+function requireOneOf(value: unknown, allowed: readonly string[], name: string): void {
+    if (typeof value !== "string" || !allowed.includes(value)) {
+        throw new RangeError(
+            `ReportData.${name} must be one of ${allowed.join(", ")} (got ${String(value)})`,
+        );
+    }
+}
+
+/** True for a real calendar date written as YYYY-MM-DD. */
+function isIsoDate(value: unknown): boolean {
+    if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+    const d = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
+
 /**
- * Validates report data to ensure safety rules and legal standards are met.
- * Specifically checks that the mandatory disclaimer is present.
+ * Validates report data before any HTML is built. Throws RangeError for:
+ *  - a blank title, project name or author, a date that is not a real YYYY-MM-DD date,
+ *    or a product that is not "mobile-planner" or "tower-planner" (the product label on the
+ *    report comes from this field);
+ *  - a status, source status, assumption category or column alignment that is not in the
+ *    allowed lists (these values are written into class names, so they must be known);
+ *  - a metric marked PASS that has no usable value (a missing number must not read as a pass);
+ *  - a plan-view image that is not a data:image URL.
+ *
+ * The planning-aid disclaimer is not a field: it is always printed (metadata.disclaimer is ignored).
  */
 export function validateReportData(data: ReportData): void {
-    if (!data.metadata?.title) {
-        throw new Error("ReportData.metadata.title is required");
+    requireText(data.metadata?.title, "metadata.title");
+    requireText(data.metadata?.projectName, "metadata.projectName");
+    requireText(data.metadata?.author, "metadata.author");
+    if (!isIsoDate(data.metadata?.date)) {
+        throw new RangeError(
+            `ReportData.metadata.date must be a real date written YYYY-MM-DD (got ${String(data.metadata?.date)})`,
+        );
     }
-    if (!data.metadata?.projectName) {
-        throw new Error("ReportData.metadata.projectName is required");
+    requireOneOf(data.metadata?.product, REPORT_PRODUCTS, "metadata.product");
+
+    if (data.verdict) {
+        requireOneOf(data.verdict.status, VERDICT_STATUSES, "verdict.status");
     }
-    if (!data.metadata?.author) {
-        throw new Error("ReportData.metadata.author is required");
+
+    if (data.planView?.imageDataUrl !== undefined && !PLAN_IMAGE_DATA_URL.test(data.planView.imageDataUrl)) {
+        throw new RangeError(
+            "ReportData.planView.imageDataUrl must be a data:image/(png|jpeg|gif|webp|svg+xml) URL",
+        );
     }
+
+    for (const sec of data.sections) {
+        for (const m of sec.metrics ?? []) {
+            if (m.status !== undefined) {
+                requireOneOf(m.status, METRIC_STATUSES, `sections[${sec.id}].metrics[${m.label}].status`);
+            }
+            if (m.status === "PASS" && isMissing(m.value)) {
+                throw new RangeError(
+                    `ReportData.sections[${sec.id}].metrics[${m.label}] is marked PASS but has no value`,
+                );
+            }
+        }
+        for (const c of sec.columns ?? []) {
+            if (c.align !== undefined) {
+                requireOneOf(
+                    c.align,
+                    ["left", "center", "right"],
+                    `sections[${sec.id}].columns[${c.key}].align`,
+                );
+            }
+        }
+        for (const r of sec.rows ?? []) {
+            if (r.status !== undefined) {
+                requireOneOf(r.status, METRIC_STATUSES, `sections[${sec.id}].rows[].status`);
+            }
+        }
+    }
+    for (const src of data.sources) {
+        requireOneOf(src.status, SOURCE_STATUSES, `sources[${src.item}].status`);
+    }
+    for (const a of data.assumptions) {
+        requireOneOf(a.category, ASSUMPTION_CATEGORIES, "assumptions[].category");
+    }
+}
+
+/** Caption and scale text are independent: the scale is printed even when there is no caption. */
+function renderPlanCaption(planView: ReportPlanView): string {
+    const caption = planView.caption?.trim();
+    const scale = planView.scaleText?.trim();
+    if (caption && scale) {
+        return `<div class="plan-view-caption">${escapeHtml(caption)} (${escapeHtml(scale)})</div>`;
+    }
+    if (caption || scale) {
+        return `<div class="plan-view-caption">${escapeHtml((caption || scale) as string)}</div>`;
+    }
+    return "";
+}
+
+function renderNotes(notes: readonly string[] | undefined): string {
+    const items = (notes ?? []).filter((n) => !isMissing(n));
+    if (items.length === 0) return "";
+    return `
+        <div class="section-block">
+            <div class="section-heading">Notes</div>
+            <ul class="notes-list">${items.map((n) => `<li>${escapeHtml(n.trim())}</li>`).join("")}</ul>
+        </div>
+    `;
 }
 
 /**
@@ -523,14 +683,18 @@ export function generateReportHtml(data: ReportData): string {
         let content = "";
         if (data.planView.imageDataUrl) {
             content = `<img class="plan-view-image" src="${escapeHtml(data.planView.imageDataUrl)}" alt="Site Plan View" />`;
-        } else if (data.planView.svgContent) {
-            content = `<div class="plan-view-image">${data.planView.svgContent}</div>`;
+        } else if (
+            data.planView.svgContent &&
+            /^\s*(<\?xml[^>]*>\s*)?<svg[\s>]/i.test(data.planView.svgContent)
+        ) {
+            // The SVG is shown through an <img> data URL. Inside an <img>, scripts, event handlers
+            // and external loads do not run, so no escaping of the SVG markup is needed or done.
+            const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(data.planView.svgContent)}`;
+            content = `<img class="plan-view-image" src="${escapeHtml(svgUrl)}" alt="Site Plan View" />`;
         } else {
             content = `<div class="plan-view-placeholder" style="padding: 24px; color: var(--text-muted); font-style: italic;">[Plan view visual layout not provided]</div>`;
         }
-        const caption = data.planView.caption
-            ? `<div class="plan-view-caption">${escapeHtml(data.planView.caption)}${data.planView.scaleText ? ` (${escapeHtml(data.planView.scaleText)})` : ""}</div>`
-            : "";
+        const caption = renderPlanCaption(data.planView);
         planViewHtml = `
             <div class="section-block">
                 <div class="section-heading">${escapeHtml(data.planView.title ?? "Site Plan & Crane Setup View")}</div>
@@ -610,6 +774,8 @@ export function generateReportHtml(data: ReportData): string {
             <div class="section-heading">Assumptions & Limitations</div>
             ${renderAssumptions(data.assumptions)}
         </div>
+
+        ${renderNotes(data.notes)}
 
         <footer class="report-footer">
             <div class="footer-disclaimer">${escapeHtml(disclaimer)}</div>

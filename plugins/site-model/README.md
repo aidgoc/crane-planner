@@ -48,6 +48,41 @@ The parser is designed for construction site layout drawings with the following 
 
 ---
 
+## S7 — Shared Report Helper (Sujal)
+
+One HTML report format for both products. The output is a self-contained, A4 print-ready page. The
+person uses the browser's **Print / Save PDF** button to get a PDF. The helper does not make a PDF or PNG
+file by itself. BACKLOG S7 says "PDF/PNG": please confirm with Sir that print-to-PDF is enough for S7.
+
+**How M9 (mobile) and T10 (tower) import it.** Plugins are built as separate bundles, so a consumer
+imports the source with a relative path, and the helper is bundled into the consumer's own `main.js`:
+
+```ts
+import { generateReportHtml, openReportPrintWindow, type ReportData } from "../../site-model/src/report";
+```
+
+(Checked: a probe file in `plugins/mobile-planner/src` with this import passes `tsc` and the plugin
+build, and the helper text is found in the built `main.js`. The probe was not committed.)
+
+Rules the helper enforces (all throw `RangeError` before any HTML is built):
+
+- `metadata`: title, project name and author are not blank; `date` is a real `YYYY-MM-DD` date;
+  `product` is `mobile-planner` or `tower-planner` (the product label comes from it).
+- Statuses are kept as given and are never mapped to PASS or FAIL: `PASS`, `FAIL`, `WARN`, `INFO`,
+  `OUT_OF_RANGE`, `INVALID`, `UNSUPPORTED`, `NOT_CHECKED`. A verdict can also be `INCOMPLETE`.
+  Source status is `VERIFIED`, `INDICATIVE`, `LEGACY` or `NOT_STATED`.
+- A metric marked `PASS` must have a usable value. A missing value (`undefined`, `null`, `NaN`,
+  `Infinity`, blank) is printed as an em dash, without its unit.
+- `planView.imageDataUrl` must be a `data:image/...` URL. `planView.svgContent` is shown through an
+  `<img>` data URL, so scripts in it do not run.
+- The planning-aid disclaimer is always printed (banner and footer). `metadata.disclaimer` is ignored.
+
+Known limits: the page is not tested in a real browser print dialog (the tests check the HTML and the
+`@media print` rules); a row status is shown as a text badge plus a row colour, and colours only print if
+the browser prints background colours (the helper asks for it with `print-color-adjust: exact`).
+
+---
+
 ## Build & Test
 
 ```bash

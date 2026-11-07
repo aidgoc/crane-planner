@@ -12,9 +12,9 @@ import {
 describe("S7: Shared Report Helper (Sujal)", () => {
     /*
      * HAND CALCULATION & ACCEPTANCE CASE 1: Mobile Crane Lift Plan
-     * Crane: Liebherr LTM 1050-3.1 (Cycle 3 KIT)
+     * Crane: Liebherr LTM 1050-3.1 (TEST FIXTURE: the numbers below are made up for this test, not from the KIT)
      * Boom length: 38.0 m, Radius: 12.0 m, Slew: 0 deg
-     * Capacity at 38m/12m: 47.5 t (from KIT load chart)
+     * Capacity at 38m/12m: 47.5 t (test fixture, INDICATIVE; not a published chart value)
      * Lifted load: 10.0 t + Rigging: 0.5 t = 10.5 t
      * Utilisation: 10.5 / 47.5 = 22.11 % (PASS)
      *
@@ -136,15 +136,13 @@ describe("S7: Shared Report Helper (Sujal)", () => {
         sources: [
             {
                 item: "LTM 1050-3.1 Load Chart",
-                document: "Cycle 3 KIT / Liebherr Technical Brochure",
-                page: 12,
-                status: "VERIFIED",
+                document: "Test fixture (not from the KIT or a brochure)",
+                status: "INDICATIVE",
             },
             {
                 item: "Crane Dimensions & Spread (8x6m)",
-                document: "Cycle 3 KIT / Liebherr Specification Sheet",
-                page: 5,
-                status: "VERIFIED",
+                document: "Test fixture (not from the KIT or a brochure)",
+                status: "INDICATIVE",
             },
             {
                 item: "Soil Bearing Capacity (25 t/m²)",
@@ -202,9 +200,9 @@ describe("S7: Shared Report Helper (Sujal)", () => {
 
         // Sources
         expect(html).toContain("LTM 1050-3.1 Load Chart");
-        expect(html).toContain("Page 12");
-        expect(html).toContain("badge-VERIFIED");
+        expect(html).toContain("Test fixture (not from the KIT or a brochure)");
         expect(html).toContain("badge-INDICATIVE");
+        expect(html.replace(/<style>[\s\S]*?<\/style>/, "")).not.toContain("badge-VERIFIED");
 
         // Assumptions
         expect(html).toContain("[STRUCTURAL]");
@@ -279,9 +277,8 @@ describe("S7: Shared Report Helper (Sujal)", () => {
             sources: [
                 {
                     item: "Potain MCT 88 Data",
-                    document: "Potain MCT 88 Technical Brochure",
-                    page: 4,
-                    status: "VERIFIED",
+                    document: "Test fixture (not a published MCT 88 chart value)",
+                    status: "INDICATIVE",
                 },
             ],
             assumptions: [

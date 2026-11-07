@@ -1,11 +1,41 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-export type ReportProduct = "mobile-planner" | "tower-planner";
+export const REPORT_PRODUCTS = ["mobile-planner", "tower-planner"] as const;
+export type ReportProduct = (typeof REPORT_PRODUCTS)[number];
 
-export type MetricStatus = "PASS" | "FAIL" | "WARN" | "INFO";
+/**
+ * Status of one metric or table row. The product statuses (OUT_OF_RANGE, INVALID,
+ * UNSUPPORTED, NOT_CHECKED) are kept as they are; they must never be turned into
+ * PASS or FAIL by the report, because a check that did not run is not a pass.
+ */
+export const METRIC_STATUSES = [
+    "PASS",
+    "FAIL",
+    "WARN",
+    "INFO",
+    "OUT_OF_RANGE",
+    "INVALID",
+    "UNSUPPORTED",
+    "NOT_CHECKED",
+] as const;
+export type MetricStatus = (typeof METRIC_STATUSES)[number];
 
-export type SourceStatus = "VERIFIED" | "INDICATIVE" | "LEGACY";
+/** Overall verdict. INCOMPLETE means at least one check did not run. */
+export const VERDICT_STATUSES = ["PASS", "FAIL", "WARN", "INCOMPLETE"] as const;
+export type VerdictStatus = (typeof VERDICT_STATUSES)[number];
+
+/** Where a number comes from. NOT_STATED is for a value the source does not give. */
+export const SOURCE_STATUSES = ["VERIFIED", "INDICATIVE", "LEGACY", "NOT_STATED"] as const;
+export type SourceStatus = (typeof SOURCE_STATUSES)[number];
+
+export const ASSUMPTION_CATEGORIES = [
+    "structural",
+    "geotechnical",
+    "clearance",
+    "operational",
+    "general",
+] as const;
 
 export interface ReportMetadata {
     readonly title: string;
@@ -20,21 +50,27 @@ export interface ReportMetadata {
 export interface ReportPlanView {
     readonly title?: string;
     readonly caption?: string;
+    /** Must be a data:image/(png|jpeg|gif|webp|svg+xml) URL. Anything else is rejected. */
     readonly imageDataUrl?: string;
+    /**
+     * Raw SVG markup. It is never put into the page as markup: it is shown through an
+     * <img> data URL, where scripts and event handlers do not run.
+     */
     readonly svgContent?: string;
     readonly scaleText?: string;
 }
 
 export interface ReportMetric {
     readonly label: string;
-    readonly value: string | number;
+    /** A missing value (undefined, null, NaN, Infinity) is printed as an em dash. */
+    readonly value: string | number | null | undefined;
     readonly unit?: string;
     readonly status?: MetricStatus;
     readonly notes?: string;
 }
 
 export interface ReportTableRow {
-    readonly cells: Record<string, string | number | undefined>;
+    readonly cells: Record<string, string | number | null | undefined>;
     readonly status?: MetricStatus;
 }
 
@@ -62,12 +98,12 @@ export interface ReportSource {
 }
 
 export interface ReportAssumption {
-    readonly category: "structural" | "geotechnical" | "clearance" | "operational" | "general";
+    readonly category: (typeof ASSUMPTION_CATEGORIES)[number];
     readonly description: string;
 }
 
 export interface ReportVerdict {
-    readonly status: "PASS" | "FAIL" | "WARN";
+    readonly status: VerdictStatus;
     readonly title: string;
     readonly summary: string;
 }
