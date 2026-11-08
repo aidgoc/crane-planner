@@ -53,9 +53,9 @@ export function createGroundBearingPanel(
 
     const areaInput = document.createElement("input");
     areaInput.type = "number";
-    areaInput.min = "0.01";
-    areaInput.step = "0.1";
-    areaInput.placeholder = "e.g. 1.0 (site input)";
+    areaInput.min = "0";
+    areaInput.step = "any";
+    areaInput.placeholder = "required (site value)";
     areaInput.value = defaultPadArea !== undefined ? String(defaultPadArea) : "";
     areaInput.className = style.inputField;
     areaGroup.appendChild(areaLabel);
@@ -73,9 +73,9 @@ export function createGroundBearingPanel(
 
     const allowableInput = document.createElement("input");
     allowableInput.type = "number";
-    allowableInput.min = "0.01";
-    allowableInput.step = "0.1";
-    allowableInput.placeholder = "e.g. 25.0 (site input)";
+    allowableInput.min = "0";
+    allowableInput.step = "any";
+    allowableInput.placeholder = "required (site value)";
     allowableInput.value = defaultAllowable !== undefined ? String(defaultAllowable) : "";
     allowableInput.className = style.inputField;
     allowableGroup.appendChild(allowableLabel);
@@ -210,7 +210,7 @@ export function createGroundBearingPanel(
             const dom = padCards[u.id];
             dom.reaction.textContent = `${u.reaction.toFixed(2)} t`;
             if (area !== undefined && u.pressureM2 > 0) {
-                dom.pressure.textContent = `${u.pressureM2.toFixed(2)} t/m² (${u.pressureKPa.toFixed(1)} kPa)`;
+                dom.pressure.textContent = `${u.pressureM2.toFixed(2)} t/m² (${u.pressureKPa.toFixed(2)} kPa)`;
             } else if (u.reaction < 0) {
                 dom.pressure.textContent = "UPLIFT (Tipping)";
             } else {

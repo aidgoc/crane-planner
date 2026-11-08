@@ -432,4 +432,49 @@ describe("M4: Ground Bearing vs User Allowable & Stability Verdict (Sujal)", () 
         expect(controller.getLatestVerdict()?.status).toBe("NOT_CHECKED");
         expect(controller.getLatestVerdict()?.verdict).toContain("no allowable capacity specified");
     });
+
+    // Review follow-up: no sample number on screen, kPa shown with 2 decimals,
+    // small positive values are accepted.
+    test("inputs show no example number and accept small positive values", () => {
+        const controller = createGroundBearingPanel();
+        const inputs = controller.element.querySelectorAll(
+            'input[type="number"]',
+        ) as NodeListOf<HTMLInputElement>;
+        for (const input of Array.from(inputs)) {
+            expect(input.value).toBe("");
+            expect(input.placeholder).not.toMatch(/\d/);
+            expect(Number(input.min)).toBe(0);
+            expect(input.step).toBe("any");
+        }
+
+        controller.update(
+            calculatePadReactions({
+                totalWeightT: 60,
+                lengthSpreadM: 8,
+                widthSpreadM: 6,
+                eccentricityXM: 0,
+                eccentricityYM: 0,
+            }),
+        );
+        inputs[0].value = "1";
+        inputs[0].dispatchEvent(new Event("input"));
+        inputs[1].value = "0.5";
+        inputs[1].dispatchEvent(new Event("input"));
+        // 15 t/m2 > 0.5 t/m2 => FAIL (the value 0.5 is accepted, not dropped)
+        expect(controller.getAllowableBearingCapacityT_M2()).toBe(0.5);
+        expect(controller.getLatestVerdict()?.status).toBe("FAIL");
+    });
+
+    test("kPa is shown with 2 decimals (22.5 t/m2 = 220.65 kPa)", () => {
+        const reactions = calculatePadReactions({
+            totalWeightT: 60,
+            lengthSpreadM: 8,
+            widthSpreadM: 6,
+            eccentricityXM: 2,
+            eccentricityYM: 0,
+        });
+        const summary = formatGroundBearingVerdictSummary(evaluateGroundBearingVerdict(reactions, 1, 25));
+        expect(summary).toContain("22.50 t/m² (220.65 kPa)");
+        expect(summary).not.toContain("220.6 kPa");
+    });
 });

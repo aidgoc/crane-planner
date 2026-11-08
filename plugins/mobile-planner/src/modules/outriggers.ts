@@ -539,7 +539,7 @@ export function formatGroundBearingVerdictSummary(result: AllPadsGroundBearingRe
         if (pad.padAreaM2 <= 0) {
             return `— t/m² [${pad.status}]`;
         }
-        return `${pad.pressureT_M2.toFixed(2)} t/m² (${pad.pressureKPa.toFixed(1)} kPa) [${pad.status}]`;
+        return `${pad.pressureT_M2.toFixed(2)} t/m² (${pad.pressureKPa.toFixed(2)} kPa) [${pad.status}]`;
     };
     const peakPressureText =
         result.peakPad.pressureT_M2 > 0
