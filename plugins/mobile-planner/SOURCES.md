@@ -28,6 +28,13 @@ interpolate or extrapolate values that the manufacturer does not publish.
 | 59.0, 58.5, 53.0, 50.5, 47.5, 40.0, 30.5, 17.2 t | 38.0 m row, radii 5/8/10/11/12/15/20/30 m | Grove GMK5250L-1 load chart, p. 17 | VERIFIED |
 | 31.0, 31.0, 31.0, 28.5, 23.5, 15.0 t | 52.4 m row, radii 10/11/12/15/20/30 m | Grove GMK5250L-1 load chart, p. 17 | VERIFIED |
 | 14.5, 14.5, 14.5, 14.5, 12.1 t | 70.0 m row, radii 12/15/20/30 m | Grove GMK5250L-1 load chart, p. 17 | VERIFIED |
+| User inputs | Total weight W, length spread L, width spread B, eccentricity | Backlog item M3 specification (no invented crane dimensions) | USER INPUT / PARAMETER |
+| Rigid plate statics: R_i = W/4 ± W*e_x/(2L) ± W*e_y/(2B) | Pad reaction equilibrium model | Classical statics equilibrium: sum F_z = W, sum M_x = W*e_y, sum M_y = W*e_x | STANDARD STATICS |
+| Tower A: [25,20]..[65,42], 75 m; Tower B: [50,54]..[70,68], 45 m; Podium: [15,12]..[75,50], 9 m | Site building obstacles | public/sample-site/sample-site.json | SYNTHETIC / SAMPLE SITE |
+| Power line at x = -9.0 m, 22 kV, clearance limit 6.0 m | Overhead power line hazard | public/sample-site/sample-site.json, "clearance_note" | INDICATIVE |
+| Power line vertical wall extents (Y ±200 m, Z 0–200 m) | Geometric model for power line hazard | Conservative large bounding extent (wire height not in sample data) | INDICATIVE / ASSUMPTION |
+| Building clearance limit (default 2.0 m in tests) | Minimum safe distance to buildings | User-supplied parameter / test input (not from standard) | USER INPUT / PARAMETER |
+| Boom radius (e.g. 0.5 m in tests) | Boom cylinder geometry | User-supplied parameter (not in crane load chart) | USER INPUT / PARAMETER |
 
 Blank cells on page 17 remain `null` in the implementation and are not treated as
 fabricated values. The exact chart configuration is full outriggers, 7.8 m track

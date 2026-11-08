@@ -6,6 +6,7 @@ import { ShowCraneCommand } from "./commands/showCrane";
 import { KIT } from "./modules/craneModel";
 
 export * from "./clearance/distance";
+export * from "./clearance/siteClearance";
 
 const MobilePlannerPlugin: Plugin = {
     commands: [ShowCraneCommand],
@@ -42,6 +43,8 @@ const MobilePlannerPlugin: Plugin = {
 };
 
 export * from "./modules/craneModel";
+export { calculateLiftCheck } from "./modules/liftCheck";
+export * from "./modules/outriggers";
 export * from "./ui/liftSummary";
 export { KIT };
 export default MobilePlannerPlugin;
