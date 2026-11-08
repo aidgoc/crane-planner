@@ -210,6 +210,9 @@ export class MobileCranePlacementPanel {
                     slewAngleDeg: this.state.slewAngleDeg,
                     boomLengthM: this.state.boomLengthM,
                     boomAngleDeg: this.state.boomAngleDeg,
+                    outriggerLengthSpreadM: this.state.outriggerLengthSpreadM,
+                    outriggerWidthSpreadM: this.state.outriggerWidthSpreadM,
+                    padAreaM2: this.state.padAreaM2,
                 });
                 doc.modelManager.addNode(node);
                 this.craneMarkerNode = node;
@@ -227,9 +230,17 @@ export class MobileCranePlacementPanel {
             this.craneMarkerNode.slewAngleDeg = input.slewAngleDeg;
             this.craneMarkerNode.boomLengthM = input.boomLengthM;
             this.craneMarkerNode.boomAngleDeg = input.boomAngleDeg;
+            this.craneMarkerNode.outriggerLengthSpreadM = input.outriggerLengthSpreadM;
+            this.craneMarkerNode.outriggerWidthSpreadM = input.outriggerWidthSpreadM;
+            this.craneMarkerNode.padAreaM2 = input.padAreaM2;
         } catch {
             // Safe fallback
         }
+    }
+
+    /** Exposes the 3D crane marker node on the scene (for inspections and tests). */
+    getMarkerNode(): MobileCraneBodyNode | undefined {
+        return this.craneMarkerNode;
     }
 
     // -----------------------------------------------------------------------

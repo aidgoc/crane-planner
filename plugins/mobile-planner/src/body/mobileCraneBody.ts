@@ -3,8 +3,8 @@
 
 // ============================================================================
 // Planning aid, not a certified lift plan.
-// M8 — Parametric 3D Mobile Crane Marker Node
-// Owner: Ajit
+// M8 / M3 — Parametric 3D Mobile Crane Marker Node & Outrigger Footprint
+// Owners: Ajit (M8 marker), Sujal (M3 footprint on plan)
 // ============================================================================
 
 import {
@@ -21,6 +21,7 @@ import {
     XYZ,
 } from "@chili3d/core";
 import { KIT } from "../modules/craneModel";
+import { getOutriggerFootprint, type OutriggerFootprint } from "../modules/outriggers";
 
 const MM_PER_M = 1000;
 
@@ -32,12 +33,19 @@ export interface MobileCraneBodyOptions {
     slewAngleDeg?: number;
     boomLengthM?: number;
     boomAngleDeg?: number;
+    outriggerLengthSpreadM?: number;
+    outriggerWidthSpreadM?: number;
+    padAreaM2?: number;
 }
 
 /**
- * Parametric 3D node representing a mobile crane marker on the site plan.
- * Renders carrier chassis, cabin/slew deck, and telescoping boom in 3D.
- * Updates dynamically as the crane position and boom angles change in the M8 panel.
+ * Parametric 3D node representing a mobile crane marker and outrigger footprint on the site plan.
+ * Renders:
+ * 1. Carrier chassis box in 3D
+ * 2. Telescoping boom cylinder in 3D
+ * 3. 4 Outrigger pad plates on the ground (Z = 0) at the 4 footprint corners (FL, FR, RL, RR)
+ * 4. Front and rear outrigger extension cross-beams connecting pads across the chassis
+ * Updates dynamically as the crane position, boom angles, and outrigger spreads change in the M8 panel.
  */
 @serializable()
 export class MobileCraneBodyNode extends ParameterShapeNode {
@@ -97,6 +105,42 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
         this.setPropertyEmitShapeChanged("boomAngleDeg", value);
     }
 
+    @serialize()
+    @property("mobile.crane.outriggerLength" as I18nKeys)
+    get outriggerLengthSpreadM(): number {
+        return this.getPrivateValue("outriggerLengthSpreadM");
+    }
+    set outriggerLengthSpreadM(value: number) {
+        if (!Number.isFinite(value) || value <= 0) {
+            throw new Error("outriggerLengthSpreadM must be strictly positive");
+        }
+        this.setPropertyEmitShapeChanged("outriggerLengthSpreadM", value);
+    }
+
+    @serialize()
+    @property("mobile.crane.outriggerWidth" as I18nKeys)
+    get outriggerWidthSpreadM(): number {
+        return this.getPrivateValue("outriggerWidthSpreadM");
+    }
+    set outriggerWidthSpreadM(value: number) {
+        if (!Number.isFinite(value) || value <= 0) {
+            throw new Error("outriggerWidthSpreadM must be strictly positive");
+        }
+        this.setPropertyEmitShapeChanged("outriggerWidthSpreadM", value);
+    }
+
+    @serialize()
+    @property("mobile.crane.padArea" as I18nKeys)
+    get padAreaM2(): number {
+        return this.getPrivateValue("padAreaM2");
+    }
+    set padAreaM2(value: number) {
+        if (!Number.isFinite(value) || value <= 0) {
+            throw new Error("padAreaM2 must be strictly positive");
+        }
+        this.setPropertyEmitShapeChanged("padAreaM2", value);
+    }
+
     constructor(options: MobileCraneBodyOptions) {
         super({ document: options.document, name: options.name ?? KIT.name });
         this.setPrivateValue("craneCentreXM", options.craneCentreXM ?? 0);
@@ -104,14 +148,31 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
         this.setPrivateValue("slewAngleDeg", options.slewAngleDeg ?? 0);
         this.setPrivateValue("boomLengthM", options.boomLengthM ?? 38);
         this.setPrivateValue("boomAngleDeg", options.boomAngleDeg ?? 60);
+        this.setPrivateValue("outriggerLengthSpreadM", options.outriggerLengthSpreadM ?? 7.7);
+        this.setPrivateValue("outriggerWidthSpreadM", options.outriggerWidthSpreadM ?? 7.2);
+        this.setPrivateValue("padAreaM2", options.padAreaM2 ?? 1.0);
     }
 
-    generateShape(): Result<IShape> {
-        let factory: IShapeFactory | undefined;
-        try {
-            factory = (globalThis as unknown as { shapeFactory?: IShapeFactory }).shapeFactory;
-        } catch {
-            // Safely guard if no application instance is set in headless tests
+    /**
+     * Returns the 2D outrigger footprint polygon and pad coordinates on the site plan (Task M3).
+     * Follows the crane position (craneCentreXM, craneCentreYM) faithfully.
+     */
+    getFootprint(): OutriggerFootprint {
+        return getOutriggerFootprint({
+            lengthSpreadM: this.outriggerLengthSpreadM,
+            widthSpreadM: this.outriggerWidthSpreadM,
+            center: { xM: this.craneCentreXM, yM: this.craneCentreYM },
+        });
+    }
+
+    override generateShape(customFactory?: IShapeFactory): Result<IShape> {
+        let factory = customFactory;
+        if (!factory) {
+            try {
+                factory = (globalThis as unknown as { shapeFactory?: IShapeFactory }).shapeFactory;
+            } catch {
+                // Safely guard if no application instance is set in headless tests
+            }
         }
         if (!factory) {
             return Result.err("ShapeFactory is not initialized");
@@ -159,6 +220,76 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
         const boomRes = factory.cylinder(dirXYZ, originXYZ, boomRadiusMm, boomLengthMm);
         if (boomRes.isOk) {
             shapes.push(boomRes.value);
+        }
+
+        // 3. Outrigger Beams and Pads on Plan (M3 Footprint on Plan)
+        // Pad dimensions: square plate of side sqrt(padArea), default 1.0 m, thickness 0.1 m (100 mm) resting on ground (z = 0..100)
+        const padSideMm = Math.sqrt(this.padAreaM2) * MM_PER_M;
+        const padThicknessMm = 0.1 * MM_PER_M;
+        const beamThicknessMm = 0.3 * MM_PER_M; // 300 mm cross section
+        const beamHeightMm = 0.4 * MM_PER_M; // 400 mm height
+        const beamZMm = padThicknessMm; // beam resting on top of pad plate (z = 100..500)
+
+        const halfLMm = (this.outriggerLengthSpreadM / 2) * MM_PER_M;
+        const halfBMm = (this.outriggerWidthSpreadM / 2) * MM_PER_M;
+
+        // 3.1 4 Outrigger Pad Plates on ground (Z = 0)
+        const padCenters = [
+            { x: cxMm + halfLMm, y: cyMm + halfBMm }, // Front-Left
+            { x: cxMm + halfLMm, y: cyMm - halfBMm }, // Front-Right
+            { x: cxMm - halfLMm, y: cyMm + halfBMm }, // Rear-Left
+            { x: cxMm - halfLMm, y: cyMm - halfBMm }, // Rear-Right
+        ];
+
+        for (const pad of padCenters) {
+            const padPlane = Plane.XY.translateTo(
+                new XYZ({
+                    x: pad.x - padSideMm / 2,
+                    y: pad.y - padSideMm / 2,
+                    z: 0,
+                }),
+            );
+            const padRes = factory.box(padPlane, padSideMm, padSideMm, padThicknessMm);
+            if (padRes.isOk) {
+                shapes.push(padRes.value);
+            }
+        }
+
+        // 3.2 Front and Rear Transverse Outrigger Beams connecting pads across chassis
+        // Front beam at X = cxMm + halfLMm
+        const frontBeamPlane = Plane.XY.translateTo(
+            new XYZ({
+                x: cxMm + halfLMm - beamThicknessMm / 2,
+                y: cyMm - halfBMm,
+                z: beamZMm,
+            }),
+        );
+        const frontBeamRes = factory.box(
+            frontBeamPlane,
+            beamThicknessMm,
+            this.outriggerWidthSpreadM * MM_PER_M,
+            beamHeightMm,
+        );
+        if (frontBeamRes.isOk) {
+            shapes.push(frontBeamRes.value);
+        }
+
+        // Rear beam at X = cxMm - halfLMm
+        const rearBeamPlane = Plane.XY.translateTo(
+            new XYZ({
+                x: cxMm - halfLMm - beamThicknessMm / 2,
+                y: cyMm - halfBMm,
+                z: beamZMm,
+            }),
+        );
+        const rearBeamRes = factory.box(
+            rearBeamPlane,
+            beamThicknessMm,
+            this.outriggerWidthSpreadM * MM_PER_M,
+            beamHeightMm,
+        );
+        if (rearBeamRes.isOk) {
+            shapes.push(rearBeamRes.value);
         }
 
         if (shapes.length === 0) {
