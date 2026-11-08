@@ -87,6 +87,9 @@ describe("DGOC Site Model Plugin (Ajit Lead)", () => {
             expect(site.no_go_zones[0].radius_m).toBeCloseTo(4.0, 4);
             expect(site.road).toBeDefined();
             expect(site.power_line).toBeDefined();
+            // Synthetic test fixture: 6.0 m clearance is derived from public/sample-site/README.md.
+            // Power line clearance_m is stored in the site model schema and applied downstream
+            // by M6/M8 (mobile boom clearance) and T8 (tower clearance).
             expect(site.power_line?.clearance_m).toBeCloseTo(6.0, 4);
         });
 
