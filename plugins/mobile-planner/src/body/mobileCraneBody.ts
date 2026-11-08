@@ -148,6 +148,7 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
         this.setPrivateValue("slewAngleDeg", options.slewAngleDeg ?? 0);
         this.setPrivateValue("boomLengthM", options.boomLengthM ?? 38);
         this.setPrivateValue("boomAngleDeg", options.boomAngleDeg ?? 60);
+        // Defaults below are INDICATIVE (same as placementState); the panel always passes its own values.
         this.setPrivateValue("outriggerLengthSpreadM", options.outriggerLengthSpreadM ?? 7.7);
         this.setPrivateValue("outriggerWidthSpreadM", options.outriggerWidthSpreadM ?? 7.2);
         this.setPrivateValue("padAreaM2", options.padAreaM2 ?? 1.0);
@@ -230,16 +231,17 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
         const beamHeightMm = 0.4 * MM_PER_M; // 400 mm height
         const beamZMm = padThicknessMm; // beam resting on top of pad plate (z = 100..500)
 
-        const halfLMm = (this.outriggerLengthSpreadM / 2) * MM_PER_M;
-        const halfBMm = (this.outriggerWidthSpreadM / 2) * MM_PER_M;
+        // Pad positions come from getFootprint(), so the drawn pads and the M3 polygon
+        // can not drift apart.
+        const footprint = this.getFootprint();
+        const toMm = (p: { xM: number; yM: number }) => ({ x: p.xM * MM_PER_M, y: p.yM * MM_PER_M });
+        const fl = toMm(footprint.pads.frontLeft);
+        const fr = toMm(footprint.pads.frontRight);
+        const rl = toMm(footprint.pads.rearLeft);
+        const rr = toMm(footprint.pads.rearRight);
 
         // 3.1 4 Outrigger Pad Plates on ground (Z = 0)
-        const padCenters = [
-            { x: cxMm + halfLMm, y: cyMm + halfBMm }, // Front-Left
-            { x: cxMm + halfLMm, y: cyMm - halfBMm }, // Front-Right
-            { x: cxMm - halfLMm, y: cyMm + halfBMm }, // Rear-Left
-            { x: cxMm - halfLMm, y: cyMm - halfBMm }, // Rear-Right
-        ];
+        const padCenters = [fl, fr, rl, rr];
 
         for (const pad of padCenters) {
             const padPlane = Plane.XY.translateTo(
@@ -259,8 +261,8 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
         // Front beam at X = cxMm + halfLMm
         const frontBeamPlane = Plane.XY.translateTo(
             new XYZ({
-                x: cxMm + halfLMm - beamThicknessMm / 2,
-                y: cyMm - halfBMm,
+                x: fl.x - beamThicknessMm / 2,
+                y: fr.y,
                 z: beamZMm,
             }),
         );
@@ -277,8 +279,8 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
         // Rear beam at X = cxMm - halfLMm
         const rearBeamPlane = Plane.XY.translateTo(
             new XYZ({
-                x: cxMm - halfLMm - beamThicknessMm / 2,
-                y: cyMm - halfBMm,
+                x: rl.x - beamThicknessMm / 2,
+                y: rr.y,
                 z: beamZMm,
             }),
         );

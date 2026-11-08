@@ -156,12 +156,14 @@ describe("M3: Outrigger Footprint Polygon on Plan (Sujal)", () => {
         });
 
         const createdBoxes: Array<{ dx: number; dy: number; dz: number }> = [];
+        const boxOrigins: Array<{ x: number; y: number; z: number }> = [];
         const createdCylinders: Array<{ radius: number; height: number }> = [];
 
         const mockShape = {} as IShape;
         const mockFactory: IShapeFactory = {
-            box(_plane: Plane, dx: number, dy: number, dz: number): Result<IShape> {
+            box(plane: Plane, dx: number, dy: number, dz: number): Result<IShape> {
                 createdBoxes.push({ dx, dy, dz });
+                boxOrigins.push({ x: plane.origin.x, y: plane.origin.y, z: plane.origin.z });
                 return { isOk: true, isErr: false, value: mockShape } as Result<IShape>;
             },
             cylinder(_dir: XYZ, _origin: XYZ, radius: number, height: number): Result<IShape> {
@@ -199,6 +201,16 @@ describe("M3: Outrigger Footprint Polygon on Plan (Sujal)", () => {
         // 2 Outrigger beams spanning width 6000 mm
         expect(createdBoxes[5]).toEqual({ dx: 300, dy: 6000, dz: 400 });
         expect(createdBoxes[6]).toEqual({ dx: 300, dy: 6000, dz: 400 });
+
+        // Positions (mm): L = 8 m, B = 6 m, crane at (0, 0), pad side 1000 mm.
+        // Pad lower-left corner = pad centre - 500 mm. Order: FL, FR, RL, RR.
+        expect(boxOrigins[1]).toEqual({ x: 4000 - 500, y: 3000 - 500, z: 0 });
+        expect(boxOrigins[2]).toEqual({ x: 4000 - 500, y: -3000 - 500, z: 0 });
+        expect(boxOrigins[3]).toEqual({ x: -4000 - 500, y: 3000 - 500, z: 0 });
+        expect(boxOrigins[4]).toEqual({ x: -4000 - 500, y: -3000 - 500, z: 0 });
+        // Beams run across the width at the front (x = +4000) and rear (x = -4000) pads.
+        expect(boxOrigins[5]).toEqual({ x: 4000 - 150, y: -3000, z: 100 });
+        expect(boxOrigins[6]).toEqual({ x: -4000 - 150, y: -3000, z: 100 });
     });
 
     // -------------------------------------------------------------------------

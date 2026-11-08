@@ -121,7 +121,7 @@ record and the traceable page-17 transcription.
   - Matches hand moment balance $\sum F_z = W$, $\sum M_x = W \cdot e_y$, $\sum M_y = W \cdot e_x$.
   - Stability: A negative reaction flags pad uplift (tipping condition).
 - **Footprint on Plan (CI-2):**
-  - 2D Polygon: `getOutriggerFootprint()` computes the 4 pad coordinates and the closed 4-point CCW bounding polygon `[FL, RL, RR, FR]` following the crane center and heading.
+  - 2D Polygon: `getOutriggerFootprint()` computes the 4 pad coordinates and the closed 4-point CCW bounding polygon `[FL, RL, RR, FR]` around the crane centre. The footprint is not rotated: the crane has no heading input, so the pads are aligned to the X and Y axes.
   - 3D CAD Visualization: `MobileCraneBodyNode` renders the 4 outrigger pad plates on the ground plane ($Z = 0$) plus front and rear outrigger extension beams connecting the pads across the chassis.
   - Live Synchronization: `MobileCranePlacementPanel` updates `MobileCraneBodyNode.outriggerLengthSpreadM` and `outriggerWidthSpreadM` in real-time as the user adjusts the outrigger spread inputs.
 
