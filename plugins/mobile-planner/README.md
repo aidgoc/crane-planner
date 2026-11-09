@@ -121,6 +121,15 @@ record and the traceable page-17 transcription.
   - Matches hand moment balance $\sum F_z = W$, $\sum M_x = W \cdot e_y$, $\sum M_y = W \cdot e_x$.
 - **Stability:** A negative reaction flags pad uplift (tipping condition).
 
+
+
+## M4 Ground Bearing vs User Allowable & Stability Verdict
+
+- **Ground bearing pressure:** $p = R / A$ where $R$ = pad reaction (t) and $A$ = pad area (m²). Converted to kPa via standard gravity $g = 9.80665$ kN/t.
+- **PASS/FAIL verdict:** If the user supplies an allowable soil bearing capacity $q_\text{allow}$ (t/m²), every pad is checked: $p \leq q_\text{allow}$ → PASS, $p > q_\text{allow}$ → FAIL. If no allowable is given, status is NOT_CHECKED.
+- **Tipping detection:** If any pad reaction $R_i < 0$, the verdict is FAIL with an explicit "tipping" keyword, regardless of bearing capacity. This satisfies the backlog requirement: *"a case where one pad reaction goes negative returns 'tipping'"*.
+- **UI Panel:** `createGroundBearingPanel()` provides a vanilla DOM panel with live inputs for pad area and allowable capacity. Inputs default to empty (requiring explicit site inputs, labeled `INDICATIVE` on screen to avoid unsourced assumptions) and display `NOT_CHECKED` until valid inputs are provided; clearing fields immediately reverts to `NOT_CHECKED`. Features a 4-pad grid with per-pad status badges, a reactive verdict banner, and the mandatory planning disclaimer.
+- **Sources:** All formulas are standard statics (no invented soil values). User-entered allowable is a parameter, not a hardcoded number. See [SOURCES.md](SOURCES.md).
 ## M6 Boom Clearance to Site Obstacles
 
 - **3D Solids:** Crane boom is modelled as an extruded cylinder from pivot `(x, y, z)` with user-supplied radius $R$, length $L$, slew angle $\theta$, and elevation $\alpha$. Site buildings are extruded from 2D polygons into 3D prisms (`buildBuildingSolid`).
