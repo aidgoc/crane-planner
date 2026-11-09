@@ -635,7 +635,8 @@ describe("MotionController", () => {
                 slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 90 },
             });
             controller.setSlewAngle(-10);
-            expect(controller.getState().slew.angleDeg).toBe(90); // clamped to max (350 > 90)
+            // Circular distance: 350° to 0° = 10°, 350° to 90° = 100° → nearest is 0°
+            expect(controller.getState().slew.angleDeg).toBe(0);
             controller.setSlewAngle(100);
             expect(controller.getState().slew.angleDeg).toBe(90);
         });
@@ -996,5 +997,589 @@ describe("Slew restriction fixes", () => {
             controller.setSlewAngle(90);
             expect(controller.getState().slew.angleDeg).toBe(90);
         });
+    });
+});
+
+describe("Issue 1: MotionController.reset() restores initial positions", () => {
+    const baseState = createDefaultCraneSimulationState({
+        mastHeightM: 40,
+        jibLengthM: 30,
+        minHookRadiusM: 16.2,
+        initialSlewAngleDeg: 0,
+    });
+    const createCtrl = (state = baseState) => new MotionController(state);
+
+    test("reset() without arguments restores hoist, trolley, and slew to initial positions", () => {
+        const customState = createDefaultCraneSimulationState({
+            mastHeightM: 40,
+            jibLengthM: 30,
+            minHookRadiusM: 16.2,
+            initialSlewAngleDeg: 45,
+        });
+        // Override initial positions
+        const testState: CraneSimulationState = {
+            ...customState,
+            hoist: { minHeightM: 0, maxHeightM: 38.5, heightM: 20 },
+            trolley: { minRadiusM: 16.2, maxRadiusM: 30, radiusM: 25 },
+            slew: { angleDeg: 45 },
+        };
+
+        const controller = new MotionController(testState);
+        controller.start();
+
+        // Move all three axes
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+        controller.applyCommand({ type: "trolley", direction: "out" }, 1000);
+        controller.applyCommand({ type: "slew", direction: "cw" }, 1000);
+
+        const movedState = controller.getState();
+        expect(movedState.hoist.heightM).not.toBeCloseTo(20);
+        expect(movedState.trolley.radiusM).not.toBeCloseTo(25);
+        expect(movedState.slew.angleDeg).not.toBeCloseTo(45);
+
+        // Reset should restore all positions
+        controller.reset();
+        const resetState = controller.getState();
+        expect(resetState.hoist.heightM).toBeCloseTo(20);
+        expect(resetState.trolley.radiusM).toBeCloseTo(25);
+        expect(resetState.slew.angleDeg).toBeCloseTo(45);
+        expect(resetState.status).toBe("idle");
+        expect(resetState.lastUpdateTimeMs).toBe(0);
+    });
+
+    test("reset() with new state uses new state as baseline for subsequent resets", () => {
+        const controller = new MotionController(
+            createDefaultCraneSimulationState({
+                mastHeightM: 40,
+                jibLengthM: 30,
+                minHookRadiusM: 16.2,
+                initialSlewAngleDeg: 0,
+            }),
+        );
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+
+        const newState = createDefaultCraneSimulationState({
+            mastHeightM: 30,
+            jibLengthM: 20,
+            minHookRadiusM: 10,
+            initialSlewAngleDeg: 90,
+        });
+        // Override initial positions in newState
+        const testNewState: CraneSimulationState = {
+            ...newState,
+            hoist: { minHeightM: 0, maxHeightM: 28.5, heightM: 15 },
+            trolley: { minRadiusM: 10, maxRadiusM: 20, radiusM: 15 },
+            slew: { angleDeg: 90 },
+        };
+
+        controller.reset(testNewState);
+        const afterFirstReset = controller.getState();
+        expect(afterFirstReset.hoist.heightM).toBeCloseTo(15);
+        expect(afterFirstReset.trolley.radiusM).toBeCloseTo(15);
+        expect(afterFirstReset.slew.angleDeg).toBeCloseTo(90);
+
+        // Move again
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+        controller.applyCommand({ type: "trolley", direction: "out" }, 1000);
+        controller.applyCommand({ type: "slew", direction: "cw" }, 1000);
+
+        // Reset again without arguments should restore to testNewState
+        controller.reset();
+        const afterSecondReset = controller.getState();
+        expect(afterSecondReset.hoist.heightM).toBeCloseTo(15);
+        expect(afterSecondReset.trolley.radiusM).toBeCloseTo(15);
+        expect(afterSecondReset.slew.angleDeg).toBeCloseTo(90);
+    });
+
+    test("repeated reset() calls are idempotent", () => {
+        const controller = createCtrl({
+            ...baseState,
+            hoist: { minHeightM: 0, maxHeightM: 38.5, heightM: 10 },
+            trolley: { minRadiusM: 16.2, maxRadiusM: 30, radiusM: 20 },
+            slew: { angleDeg: 30 },
+        });
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+
+        controller.reset();
+        const firstReset = controller.getState();
+        controller.reset();
+        const secondReset = controller.getState();
+        controller.reset();
+        const thirdReset = controller.getState();
+
+        expect(secondReset.hoist.heightM).toBeCloseTo(firstReset.hoist.heightM);
+        expect(thirdReset.hoist.heightM).toBeCloseTo(firstReset.hoist.heightM);
+        expect(secondReset.trolley.radiusM).toBeCloseTo(firstReset.trolley.radiusM);
+        expect(thirdReset.trolley.radiusM).toBeCloseTo(firstReset.trolley.radiusM);
+        expect(secondReset.slew.angleDeg).toBeCloseTo(firstReset.slew.angleDeg);
+        expect(thirdReset.slew.angleDeg).toBeCloseTo(firstReset.slew.angleDeg);
+    });
+});
+
+describe("Issue 2: setSlewAngle() uses circular distance for normal ranges", () => {
+    const baseState = createDefaultCraneSimulationState({
+        mastHeightM: 40,
+        jibLengthM: 30,
+        minHookRadiusM: 16.2,
+        initialSlewAngleDeg: 0,
+    });
+    const createCtrl = (state = baseState) => new MotionController(state);
+
+    test("[0°, 90°] sector: input -10° (350°) clamps to 0° (nearest boundary)", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 90 },
+        });
+        controller.setSlewAngle(-10); // normalizes to 350°
+        // Circular distance: 350° to 0° = 10°, 350° to 90° = 100° → nearest is 0°
+        expect(controller.getState().slew.angleDeg).toBe(0);
+    });
+
+    test("[0°, 90°] sector: input 350° clamps to 0°", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 90 },
+        });
+        controller.setSlewAngle(350);
+        expect(controller.getState().slew.angleDeg).toBe(0);
+    });
+
+    test("[0°, 90°] sector: input 100° clamps to 90°", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 90 },
+        });
+        controller.setSlewAngle(100);
+        expect(controller.getState().slew.angleDeg).toBe(90);
+    });
+
+    test("[0°, 90°] sector: input 45° stays 45° (inside allowed)", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 90 },
+        });
+        controller.setSlewAngle(45);
+        expect(controller.getState().slew.angleDeg).toBe(45);
+    });
+
+    test("[45°, 135°] sector: input 30° clamps to 45°", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 90, minAngleDeg: 45, maxAngleDeg: 135 },
+        });
+        controller.setSlewAngle(30);
+        expect(controller.getState().slew.angleDeg).toBe(45);
+    });
+
+    test("[45°, 135°] sector: input 150° clamps to 135°", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 90, minAngleDeg: 45, maxAngleDeg: 135 },
+        });
+        controller.setSlewAngle(150);
+        expect(controller.getState().slew.angleDeg).toBe(135);
+    });
+
+    test("cross-zero sector [300°, 60°]: input 70° (forbidden) clamps to 60°", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 300, maxAngleDeg: 60 },
+        });
+        controller.setSlewAngle(70);
+        // 70° is in forbidden (60, 300). Circular distance to 60 = 10°, to 300 = 130° → 60°
+        expect(controller.getState().slew.angleDeg).toBe(60);
+    });
+
+    test("cross-zero sector [300°, 60°]: input 200° (forbidden) clamps to 300°", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 300, maxAngleDeg: 60 },
+        });
+        controller.setSlewAngle(200);
+        // 200° is in forbidden (60, 300). Circular distance to 300 = 100°, to 60 = 140° → 300°
+        expect(controller.getState().slew.angleDeg).toBe(300);
+    });
+
+    test("equal-distance case: input exactly midway between boundaries", () => {
+        // Sector [0°, 180°], input 90° is exactly in middle
+        // But 90° is inside allowed, so should stay
+        const controller1 = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 180 },
+        });
+        controller1.setSlewAngle(90);
+        expect(controller1.getState().slew.angleDeg).toBe(90);
+
+        // Sector [0°, 90°], input 135°: distance to 0 = 135°, to 90 = 45° → 90°
+        const controller2 = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 90 },
+        });
+        controller2.setSlewAngle(135);
+        expect(controller2.getState().slew.angleDeg).toBe(90);
+    });
+});
+
+describe("Issue 3: 0°–360° full rotation does not freeze at 0°", () => {
+    const baseState = createDefaultCraneSimulationState({
+        mastHeightM: 40,
+        jibLengthM: 30,
+        minHookRadiusM: 16.2,
+        initialSlewAngleDeg: 0,
+    });
+    const createCtrl = (state = baseState) => new MotionController(state);
+
+    test("full circle [0°, 360°] permits unrestricted CW motion through 0°", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 359, minAngleDeg: 0, maxAngleDeg: 360 },
+        });
+        controller.start();
+        // Move CW by 1.2°: 359 + 0.6*2 = 360.2 → normalizes to 0.2°
+        // Use 4 steps of 500ms: 4 * 0.6 * 0.5 = 1.2°
+        for (let i = 0; i < 4; i++) {
+            controller.applyCommand({ type: "slew", direction: "cw" }, 500);
+        }
+        expect(controller.getState().slew.angleDeg).toBeCloseTo(0.2);
+    });
+
+    test("full circle [0°, 360°] permits unrestricted CCW motion through 0°", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 1, minAngleDeg: 0, maxAngleDeg: 360 },
+        });
+        controller.start();
+        // Move CCW by 1.2°: 1 - 0.6*2 = -0.2 → normalizes to 359.8°
+        for (let i = 0; i < 4; i++) {
+            controller.applyCommand({ type: "slew", direction: "ccw" }, 500);
+        }
+        expect(controller.getState().slew.angleDeg).toBeCloseTo(359.8);
+    });
+
+    test("full circle [0°, 360°] permits setting arbitrary angles", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 360 },
+        });
+        controller.setSlewAngle(180);
+        expect(controller.getState().slew.angleDeg).toBe(180);
+        controller.setSlewAngle(270);
+        expect(controller.getState().slew.angleDeg).toBe(270);
+        controller.setSlewAngle(350);
+        expect(controller.getState().slew.angleDeg).toBe(350);
+        controller.setSlewAngle(360); // normalizes to 0
+        expect(controller.getState().slew.angleDeg).toBe(0);
+    });
+
+    test("full circle [0°, 360°] does not clamp valid motion to 0°", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 10, minAngleDeg: 0, maxAngleDeg: 360 },
+        });
+        controller.start();
+        // Multiple steps CW
+        for (let i = 0; i < 10; i++) {
+            controller.applyCommand({ type: "slew", direction: "cw" }, 500);
+        }
+        // Should have moved CW, not frozen at 0
+        expect(controller.getState().slew.angleDeg).toBeGreaterThan(10);
+    });
+
+    test("equivalent full-circle [90°, 450°] works the same", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 100, minAngleDeg: 90, maxAngleDeg: 450 },
+        });
+        controller.start();
+        // 4 steps of 500ms = 1.2°
+        for (let i = 0; i < 4; i++) {
+            controller.applyCommand({ type: "slew", direction: "cw" }, 500);
+        }
+        expect(controller.getState().slew.angleDeg).toBeGreaterThan(100);
+    });
+
+    test("partial sector [0°, 90°] still restricts correctly", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 45, minAngleDeg: 0, maxAngleDeg: 90 },
+        });
+        controller.start();
+        // Try to move CW past 90° using multiple steps
+        // 45° to 90° = 45° needed. At 0.6 deg/s, 45/0.6 = 75s = 150 steps of 500ms
+        for (let i = 0; i < 150; i++) {
+            controller.applyCommand({ type: "slew", direction: "cw" }, 500);
+        }
+        expect(controller.getState().slew.angleDeg).toBeCloseTo(90); // clamped at max
+    });
+
+    test("cross-zero sector [300°, 60°] still restricts correctly", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 350, minAngleDeg: 300, maxAngleDeg: 60 },
+        });
+        controller.start();
+        // Move CW from 350° by enough to reach forbidden zone and clamp to 60°
+        // 350 -> 360 (10°) -> 0 -> 60 (60°) = 70° total = 70/0.6 = 117s = 233 steps of 500ms
+        for (let i = 0; i < 240; i++) {
+            controller.applyCommand({ type: "slew", direction: "cw" }, 500);
+        }
+        expect(controller.getState().slew.angleDeg).toBe(60);
+    });
+});
+
+describe("reset() baseline independence", () => {
+    const baseState = createDefaultCraneSimulationState({
+        mastHeightM: 40,
+        jibLengthM: 30,
+        minHookRadiusM: 16.2,
+        initialSlewAngleDeg: 0,
+    });
+    const createCtrl = (state = baseState) => new MotionController(state);
+
+    test("mutating constructor input after creation does not affect reset baseline", () => {
+        const initialState = {
+            ...baseState,
+            hoist: { minHeightM: 0, maxHeightM: 38.5, heightM: 10 },
+            trolley: { minRadiusM: 16.2, maxRadiusM: 30, radiusM: 20 },
+            slew: { angleDeg: 30 },
+        };
+        const controller = new MotionController(initialState);
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+
+        // Mutate the original constructor input
+        initialState.hoist.heightM = 999;
+        initialState.trolley.radiusM = 888;
+        initialState.slew.angleDeg = 777;
+
+        // Reset should still restore to original values (10, 20, 30)
+        controller.reset();
+        const state = controller.getState();
+        expect(state.hoist.heightM).toBeCloseTo(10);
+        expect(state.trolley.radiusM).toBeCloseTo(20);
+        expect(state.slew.angleDeg).toBeCloseTo(30);
+    });
+
+    test("mutating object passed to reset(newState) does not affect new baseline", () => {
+        const controller = createCtrl();
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+
+        const newState = {
+            ...baseState,
+            hoist: { minHeightM: 0, maxHeightM: 38.5, heightM: 15 },
+            trolley: { minRadiusM: 16.2, maxRadiusM: 30, radiusM: 25 },
+            slew: { angleDeg: 45 },
+        };
+        controller.reset(newState);
+
+        // Mutate the object that was passed to reset()
+        newState.hoist.heightM = 999;
+        newState.trolley.radiusM = 888;
+        newState.slew.angleDeg = 777;
+
+        // Reset again should restore to the values passed to reset() (15, 25, 45)
+        controller.reset();
+        const state = controller.getState();
+        expect(state.hoist.heightM).toBeCloseTo(15);
+        expect(state.trolley.radiusM).toBeCloseTo(25);
+        expect(state.slew.angleDeg).toBeCloseTo(45);
+    });
+
+    test("mutating live state after reset does not corrupt baseline for next reset", () => {
+        const controller = createCtrl();
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+        controller.reset();
+
+        // Mutate live state by moving
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+        controller.applyCommand({ type: "trolley", direction: "out" }, 1000);
+        controller.applyCommand({ type: "slew", direction: "cw" }, 1000);
+
+        // Reset again should still restore to original baseline
+        controller.reset();
+        const state = controller.getState();
+        expect(state.hoist.heightM).toBeCloseTo(38.5); // default initial height
+        expect(state.trolley.radiusM).toBeCloseTo(30); // default initial radius
+        expect(state.slew.angleDeg).toBeCloseTo(0); // default initial angle
+    });
+});
+
+describe("Full-circle slew range validation", () => {
+    const baseState = createDefaultCraneSimulationState({
+        mastHeightM: 40,
+        jibLengthM: 30,
+        minHookRadiusM: 16.2,
+        initialSlewAngleDeg: 0,
+    });
+    const createCtrl = (state = baseState) => new MotionController(state);
+
+    test("exact 360° span [0, 360] is treated as unrestricted", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 360 },
+        });
+        controller.setSlewAngle(180);
+        expect(controller.getState().slew.angleDeg).toBe(180);
+        controller.setSlewAngle(350);
+        expect(controller.getState().slew.angleDeg).toBe(350);
+    });
+
+    test("exact 360° span [90, 450] is treated as unrestricted", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 100, minAngleDeg: 90, maxAngleDeg: 450 },
+        });
+        controller.setSlewAngle(200);
+        expect(controller.getState().slew.angleDeg).toBe(200);
+    });
+
+    test("span > 360° throws at construction", () => {
+        expect(() =>
+            createCtrl({
+                ...baseState,
+                slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 361 },
+            }),
+        ).toThrow(/span of 361° exceeds maximum 360°/);
+    });
+
+    test("span > 360° throws at construction before applyCommand", () => {
+        expect(() =>
+            createCtrl({
+                ...baseState,
+                slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 361 },
+            }),
+        ).toThrow(/span of 361° exceeds maximum 360°/);
+    });
+
+    test("negative span = 360° [360, 0] is treated as unrestricted", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 360, maxAngleDeg: 0 },
+        });
+        controller.setSlewAngle(180);
+        expect(controller.getState().slew.angleDeg).toBe(180);
+    });
+
+    test("exact 360° with negative direction works", () => {
+        const controller = createCtrl({
+            ...baseState,
+            slew: { angleDeg: 360, minAngleDeg: 0, maxAngleDeg: 360 },
+        });
+        controller.setSlewAngle(90);
+        expect(controller.getState().slew.angleDeg).toBe(90);
+    });
+
+    test("constructor with span > 360° throws immediately", () => {
+        expect(
+            () =>
+                new MotionController({
+                    ...baseState,
+                    slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 361 },
+                }),
+        ).toThrow(/span of 361° exceeds maximum 360°/);
+    });
+});
+
+describe("reset() validation and state preservation", () => {
+    const baseState = createDefaultCraneSimulationState({
+        mastHeightM: 40,
+        jibLengthM: 30,
+        minHookRadiusM: 16.2,
+        initialSlewAngleDeg: 0,
+    });
+    const createCtrl = (state = baseState) => new MotionController(state);
+
+    test("reset(newState) with span > 360° throws and leaves state/baseline unchanged", () => {
+        const controller = createCtrl();
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+        controller.applyCommand({ type: "trolley", direction: "out" }, 1000);
+        controller.applyCommand({ type: "slew", direction: "cw" }, 1000);
+
+        const stateBeforeReset = controller.getState();
+        const baselineBeforeReset = { ...stateBeforeReset }; // capture for comparison
+
+        // Attempt reset with invalid span
+        const invalidState = {
+            ...baseState,
+            slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 361 },
+        };
+        expect(() => controller.reset(invalidState)).toThrow(/span of 361° exceeds maximum 360°/);
+
+        // State should be unchanged
+        const stateAfterFailedReset = controller.getState();
+        expect(stateAfterFailedReset.hoist.heightM).toBeCloseTo(stateBeforeReset.hoist.heightM);
+        expect(stateAfterFailedReset.trolley.radiusM).toBeCloseTo(stateBeforeReset.trolley.radiusM);
+        expect(stateAfterFailedReset.slew.angleDeg).toBeCloseTo(stateBeforeReset.slew.angleDeg);
+        expect(stateAfterFailedReset.status).toBe(stateBeforeReset.status);
+        expect(stateAfterFailedReset.lastUpdateTimeMs).toBe(stateBeforeReset.lastUpdateTimeMs);
+    });
+
+    test("reset(newState) with invalid velocity limits throws and leaves state/baseline unchanged", () => {
+        const controller = createCtrl();
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+
+        const stateBeforeReset = controller.getState();
+
+        const invalidState = {
+            ...baseState,
+            velocityLimits: { hoist: -1, trolley: 1, slew: 1 },
+        };
+        expect(() => controller.reset(invalidState)).toThrow(/Hoist velocity limit/);
+
+        // State should be unchanged
+        const stateAfterFailedReset = controller.getState();
+        expect(stateAfterFailedReset.hoist.heightM).toBeCloseTo(stateBeforeReset.hoist.heightM);
+        expect(stateAfterFailedReset.status).toBe(stateBeforeReset.status);
+    });
+
+    test("reset() without arguments restores from original baseline even after failed reset(newState)", () => {
+        const controller = createCtrl();
+        const originalHeight = controller.getState().hoist.heightM;
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+
+        // Failed reset
+        expect(() =>
+            controller.reset({
+                ...baseState,
+                slew: { angleDeg: 0, minAngleDeg: 0, maxAngleDeg: 361 },
+            }),
+        ).toThrow();
+
+        // Reset without arguments should still work and restore original baseline
+        controller.reset();
+        expect(controller.getState().hoist.heightM).toBeCloseTo(originalHeight);
+        expect(controller.getState().status).toBe("idle");
+    });
+
+    test("valid reset(newState) updates baseline for subsequent resets", () => {
+        const controller = createCtrl();
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+
+        const newState = {
+            ...baseState,
+            hoist: { minHeightM: 0, maxHeightM: 38.5, heightM: 15 },
+            trolley: { minRadiusM: 16.2, maxRadiusM: 30, radiusM: 25 },
+            slew: { angleDeg: 45 },
+        };
+        controller.reset(newState);
+        expect(controller.getState().hoist.heightM).toBeCloseTo(15);
+
+        // Move again
+        controller.start();
+        controller.applyCommand({ type: "hoist", direction: "up" }, 1000);
+
+        // Reset again should restore to newState baseline
+        controller.reset();
+        expect(controller.getState().hoist.heightM).toBeCloseTo(15);
     });
 });

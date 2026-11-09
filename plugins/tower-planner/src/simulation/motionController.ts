@@ -11,6 +11,7 @@ import {
     updateSlew,
     updateTrolley,
     type VelocityLimits,
+    validateSlewRestrictionSpan,
     validateVelocityLimits,
 } from "./simulationState";
 
@@ -67,12 +68,49 @@ function validateTimeStep(dtMs: number, config: MotionControllerConfig): string 
 }
 
 /**
+ * Calculates the shortest angular distance from angle `from` to angle `to` on a circle.
+ * Returns positive if `to` is counter-clockwise from `from`, negative if clockwise.
+ * Both angles must be normalized to [0, 360).
+ */
+function angularDistance(from: number, to: number): number {
+    const diff = (to - from + 360) % 360;
+    return diff > 180 ? diff - 360 : diff;
+}
+
+/**
+ * Finds the nearest boundary of an allowed angular sector to a given angle.
+ * Returns the boundary angle (min or max) that is closest in circular distance.
+ * For equal distances, returns the min boundary (deterministic tie-breaking).
+ */
+function nearestBoundary(angle: number, min: number, max: number): number {
+    const distToMin = Math.abs(angularDistance(angle, min));
+    const distToMax = Math.abs(angularDistance(angle, max));
+    return distToMin <= distToMax ? min : max;
+}
+
+/**
+ * Creates a deep, independent clone of a CraneSimulationState.
+ * This ensures the reset baseline never shares nested mutable objects with
+ * live state or caller-provided objects.
+ */
+function cloneCraneSimulationState(state: CraneSimulationState): CraneSimulationState {
+    return {
+        hoist: { ...state.hoist },
+        trolley: { ...state.trolley },
+        slew: { ...state.slew },
+        velocityLimits: { ...state.velocityLimits },
+    };
+}
+
+/**
  * Main motion controller class.
  * Handles time-step based updates for hoist, trolley, and slew motions.
  */
 export class MotionController {
     private state: SimulationState;
     private config: MotionControllerConfig;
+    // Snapshot of the initial crane simulation state for reset()
+    private initialCraneState: CraneSimulationState;
 
     constructor(initialState: CraneSimulationState, config?: Partial<MotionControllerConfig>) {
         const errors = validateVelocityLimits(initialState.velocityLimits);
@@ -80,8 +118,19 @@ export class MotionController {
             throw new Error(`Invalid velocity limits: ${errors.join("; ")}`);
         }
 
+        // Validate slew restriction span in initial state
+        const slewSpanError = validateSlewRestrictionSpan(
+            initialState.slew.minAngleDeg,
+            initialState.slew.maxAngleDeg,
+        );
+        if (slewSpanError) {
+            throw new Error(slewSpanError);
+        }
+
+        // Store a deep, independent snapshot of the constructor's initial state
+        this.initialCraneState = cloneCraneSimulationState(initialState);
         this.state = {
-            ...initialState,
+            ...cloneCraneSimulationState(initialState),
             status: "idle",
             lastUpdateTimeMs: 0,
         };
@@ -152,25 +201,32 @@ export class MotionController {
     /**
      * Resets the simulation to initial state.
      * Resets accumulated simulation time to 0.
+     * Restores hoist, trolley, and slew to their initial positions.
+     * If initialState is provided, it becomes the new reset baseline.
      */
     reset(initialState?: CraneSimulationState): void {
         if (initialState) {
+            // Validate before changing anything
             const errors = validateVelocityLimits(initialState.velocityLimits);
             if (errors.length > 0) {
                 throw new Error(`Invalid velocity limits: ${errors.join("; ")}`);
             }
-            this.state = {
-                ...initialState,
-                status: "idle",
-                lastUpdateTimeMs: 0,
-            };
-        } else {
-            this.state = {
-                ...this.state,
-                status: "idle",
-                lastUpdateTimeMs: 0,
-            };
+            const slewSpanError = validateSlewRestrictionSpan(
+                initialState.slew.minAngleDeg,
+                initialState.slew.maxAngleDeg,
+            );
+            if (slewSpanError) {
+                throw new Error(slewSpanError);
+            }
+            // Validation passed — now update baseline
+            this.initialCraneState = cloneCraneSimulationState(initialState);
         }
+        // Restore from the baseline using a fresh independent copy
+        this.state = {
+            ...cloneCraneSimulationState(this.initialCraneState),
+            status: "idle",
+            lastUpdateTimeMs: 0,
+        };
     }
 
     /**
@@ -344,33 +400,56 @@ export class MotionController {
     /**
      * Sets a new slew angle directly.
      * Applies angle restrictions if configured. If the angle falls within
-     * a restricted (forbidden) sector, it is clamped to the nearest boundary.
+     * a restricted (forbidden) sector, it is clamped to the nearest boundary
+     * using circular distance.
      */
     setSlewAngle(angleDeg: number): void {
         const normalized = normalizeAngleDeg(angleDeg);
         // Apply restrictions if configured
         let finalAngle = normalized;
         if (this.state.slew.minAngleDeg !== undefined && this.state.slew.maxAngleDeg !== undefined) {
+            // Validate span using shared validation
+            const spanError = validateSlewRestrictionSpan(
+                this.state.slew.minAngleDeg,
+                this.state.slew.maxAngleDeg,
+            );
+            if (spanError) {
+                throw new Error(spanError);
+            }
+
             const min = normalizeAngleDeg(this.state.slew.minAngleDeg);
             const max = normalizeAngleDeg(this.state.slew.maxAngleDeg);
-            const rangeCrossesZero = min > max;
 
-            if (rangeCrossesZero) {
-                // Range crosses 0° (e.g., 300° to 60°).
-                // Allowed: [min, 360) U [0, max]. Forbidden: (max, min).
-                // If normalized is in forbidden range, clamp to nearest boundary.
-                if (normalized > max && normalized < min) {
-                    // Inside forbidden range — clamp to nearest boundary
-                    // Distance to max boundary (going backward): (normalized - max + 360) % 360
-                    // Distance to min boundary (going forward): (min - normalized + 360) % 360
-                    const distToMax = (normalized - max + 360) % 360;
-                    const distToMin = (min - normalized + 360) % 360;
-                    finalAngle = distToMax < distToMin ? max : min;
-                }
+            // Check for full-circle configuration (exactly 360° span)
+            // This must be checked BEFORE checking rangeCrossesZero, because
+            // normalizing both 0° and 360° gives 0°, which would look like a zero-width sector.
+            const rawMin = this.state.slew.minAngleDeg;
+            const rawMax = this.state.slew.maxAngleDeg;
+            const span = Math.abs(rawMax - rawMin);
+            const isFullCircle = span === 360;
+
+            if (isFullCircle) {
+                // Full rotation allowed — no restriction
+                finalAngle = normalized;
             } else {
-                // Normal range (min < max, doesn't cross 0).
-                // Allowed: [min, max]. Forbidden: outside this range.
-                finalAngle = clamp(normalized, min, max);
+                const rangeCrossesZero = min > max;
+
+                if (rangeCrossesZero) {
+                    // Range crosses 0° (e.g., 300° to 60°).
+                    // Allowed: [min, 360) U [0, max]. Forbidden: (max, min).
+                    // If normalized is in forbidden range, clamp to nearest boundary.
+                    if (normalized > max && normalized < min) {
+                        // Inside forbidden range — clamp to nearest boundary using circular distance
+                        finalAngle = nearestBoundary(normalized, min, max);
+                    }
+                } else {
+                    // Normal range (min < max, doesn't cross 0).
+                    // Allowed: [min, max]. Forbidden: outside this range.
+                    // Use circular distance to find nearest boundary.
+                    if (normalized < min || normalized > max) {
+                        finalAngle = nearestBoundary(normalized, min, max);
+                    }
+                }
             }
         }
         this.state = { ...this.state, slew: { ...this.state.slew, angleDeg: finalAngle } };
