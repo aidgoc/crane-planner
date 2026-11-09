@@ -15,7 +15,7 @@ import type {
     PowerLineObstacle,
     SiteClearanceReport,
 } from "./siteClearance";
-import { computeSiteClearance, validateBoomPlacement } from "./siteClearance";
+import { checkPreparedObstacles, prepareObstacles, validateBoomPlacement } from "./siteClearance";
 
 // ============================================================================
 // Public types
@@ -68,6 +68,35 @@ export interface SwingSweepReport {
     } | null;
     /** True if any step at any angle has a collision or touching. */
     anyCollision: boolean;
+    /** Largest gap between two neighbouring sampled angles, in degrees. */
+    maxAngleGapDeg: number;
+    /**
+     * The most any boom point can move between a sampled angle and an angle
+     * between two samples (m). See `betweenSamplesAllowanceM`.
+     */
+    betweenSamplesAllowanceM: number;
+    /**
+     * Lower bound of the clearance over the WHOLE swing, not only at the samples:
+     * the smallest sampled distance of an obstacle minus `betweenSamplesAllowanceM`,
+     * the lowest value over all obstacles. It can be negative, which means a
+     * collision between two samples cannot be excluded. `null` when no obstacles
+     * were checked.
+     */
+    guaranteedMinDistanceM: number | null;
+    /**
+     * Verdict for the whole swing, including the angles between the samples:
+     *  - CRITICAL: a sampled angle collides or touches.
+     *  - WARNING:  a sampled angle is inside the clearance limit, OR the samples are
+     *              clear but the gap between samples is too large to prove the swing
+     *              is clear (guaranteed distance below the limit, or not above 0).
+     *              Shown red, like M6.
+     *  - SAFE:     every obstacle is clear by at least its limit (and above 0) over the
+     *              whole swing, proved with the between-samples allowance.
+     *  - null:     no obstacles were checked. Never SAFE.
+     */
+    sweepStatus: "SAFE" | "WARNING" | "CRITICAL" | null;
+    /** One sentence that says why `sweepStatus` has its value. */
+    sweepStatusNote: string;
     disclaimer: "Planning aid, not a certified lift plan.";
 }
 
@@ -85,27 +114,13 @@ export interface SwingSweepReport {
 export const MAX_SWEEP_SAMPLES = 5000;
 
 /**
- * Validates the sweep parameters before running any geometry.
- *
- * Rules:
- *  - stepDeg must be > 0 and finite (zero → infinite loop; negative → nonsense)
- *  - fromDeg and toDeg must be finite (NaN / Infinity → broken loop)
- *  - The sweep must not need more than MAX_SWEEP_SAMPLES angles
- *  - The base BoomPlacement is also validated (via validateBoomPlacement)
- *
- * Throws RangeError with a descriptive message.
+ * Checks the angle range and the step. Shared by `generateSlewAngles` (which is
+ * exported and can be called on its own) and `validateSweepParams`.
+ *  - stepDeg must be > 0 and finite (zero would loop forever; negative or NaN
+ *    would give an empty list)
+ *  - fromDeg and toDeg must be finite
  */
-export function validateSweepParams(
-    basePlacement: BoomPlacement,
-    fromDeg: number,
-    toDeg: number,
-    stepDeg: number,
-): void {
-    // BoomPlacement validation (length, radius, elevation, pivot, etc.)
-    // Temporarily override slewDeg to fromDeg for the validation — it will be
-    // overwritten at each step anyway.
-    validateBoomPlacement({ ...basePlacement, slewDeg: fromDeg });
-
+function assertAngleRange(fromDeg: number, toDeg: number, stepDeg: number): void {
     if (!Number.isFinite(stepDeg) || stepDeg <= 0) {
         throw new RangeError(
             `sweepSlew: stepDeg must be > 0 and finite (got ${stepDeg}). ` +
@@ -118,15 +133,63 @@ export function validateSweepParams(
     if (!Number.isFinite(toDeg)) {
         throw new RangeError(`sweepSlew: toDeg must be finite (got ${toDeg}).`);
     }
+}
 
-    // Upper bound of generateSlewAngles(): the regular steps plus the endpoint.
-    const sampleCount = Math.floor(Math.abs(toDeg - fromDeg) / stepDeg) + 2;
-    if (sampleCount > MAX_SWEEP_SAMPLES) {
+/** A last regular sample within this fraction of a step of `toDeg` counts as `toDeg`. */
+const END_TOLERANCE = 1e-9;
+
+/**
+ * Exact number of angles `generateSlewAngles` returns, without building them.
+ * Used for the MAX_SWEEP_SAMPLES check, so the check and the list always agree.
+ * Call `assertAngleRange` first.
+ */
+function planSlewAngles(
+    fromDeg: number,
+    toDeg: number,
+    stepDeg: number,
+): { count: number; nSteps: number; endIsRegular: boolean } {
+    if (fromDeg === toDeg) return { count: 1, nSteps: 0, endIsRegular: true };
+    const arc = Math.abs(toDeg - fromDeg);
+    const nSteps = Math.floor(arc / stepDeg + END_TOLERANCE);
+    // With nSteps = 0 the only regular sample is fromDeg, so toDeg is always added,
+    // even for a tiny but non-zero sweep.
+    const endIsRegular = nSteps > 0 && Math.abs(arc - nSteps * stepDeg) <= stepDeg * END_TOLERANCE;
+    return { count: nSteps + 1 + (endIsRegular ? 0 : 1), nSteps, endIsRegular };
+}
+
+function assertSampleCount(fromDeg: number, toDeg: number, stepDeg: number): number {
+    const { count } = planSlewAngles(fromDeg, toDeg, stepDeg);
+    if (!(count <= MAX_SWEEP_SAMPLES)) {
         throw new RangeError(
-            `sweepSlew: step ${stepDeg}° over ${fromDeg}° to ${toDeg}° needs about ${sampleCount} samples, ` +
+            `sweepSlew: step ${stepDeg}° over ${fromDeg}° to ${toDeg}° needs ${count} samples, ` +
                 `more than the limit of ${MAX_SWEEP_SAMPLES}. Use a larger step (BACKLOG M7 uses 2° to 5°).`,
         );
     }
+    return count;
+}
+
+/**
+ * Validates the sweep parameters before running any geometry.
+ *
+ * Rules:
+ *  - stepDeg must be > 0 and finite, fromDeg and toDeg must be finite
+ *  - The sweep must not need more than MAX_SWEEP_SAMPLES angles (exactly
+ *    MAX_SWEEP_SAMPLES is allowed)
+ *  - The base BoomPlacement is also validated (via validateBoomPlacement)
+ *
+ * Throws RangeError with a descriptive message.
+ */
+export function validateSweepParams(
+    basePlacement: BoomPlacement,
+    fromDeg: number,
+    toDeg: number,
+    stepDeg: number,
+): void {
+    assertAngleRange(fromDeg, toDeg, stepDeg);
+    assertSampleCount(fromDeg, toDeg, stepDeg);
+    // BoomPlacement validation (length, radius, elevation, pivot, etc.)
+    // slewDeg is overwritten at each step, so validate it at fromDeg.
+    validateBoomPlacement({ ...basePlacement, slewDeg: fromDeg });
 }
 
 // ============================================================================
@@ -146,30 +209,52 @@ export function validateSweepParams(
  * 350° to 10° sweeps 340° downwards (not 20° through 0°). Pass the arc the boom
  * really swings through.
  *
- * The final angle is always included even if the remaining arc is < stepDeg.
+ * `toDeg` is always the last angle, exactly, even for a very small sweep. A last
+ * regular step within 1e-9 of a step of `toDeg` is replaced by `toDeg` (so
+ * 0 to 0.3 in steps of 0.1 ends at 0.3, not 0.30000000000000004).
  *
+ * @throws RangeError if `stepDeg` is not > 0 and finite, if an angle is not
+ *   finite, or if more than MAX_SWEEP_SAMPLES angles would be needed. It checks
+ *   this itself, before building the list, so it is safe to call directly.
  * @returns Array of slew angles in degrees, ordered from `fromDeg` to `toDeg`.
  */
 export function generateSlewAngles(fromDeg: number, toDeg: number, stepDeg: number): number[] {
+    assertAngleRange(fromDeg, toDeg, stepDeg);
+    assertSampleCount(fromDeg, toDeg, stepDeg);
     if (fromDeg === toDeg) return [fromDeg];
 
     const direction = toDeg > fromDeg ? 1 : -1;
-    const absStep = stepDeg; // stepDeg is always > 0 (validated)
-    const totalArc = Math.abs(toDeg - fromDeg);
-    const nSteps = Math.floor(totalArc / absStep);
+    const { nSteps, endIsRegular } = planSlewAngles(fromDeg, toDeg, stepDeg);
 
     const angles: number[] = [];
     for (let i = 0; i <= nSteps; i++) {
-        angles.push(fromDeg + i * direction * absStep);
+        angles.push(fromDeg + i * direction * stepDeg);
     }
-
-    // Ensure the endpoint is included (it may already be the last angle)
-    const lastAngle = angles[angles.length - 1];
-    if (Math.abs(lastAngle - toDeg) > 1e-9) {
+    if (endIsRegular) {
+        angles[angles.length - 1] = toDeg;
+    } else {
         angles.push(toDeg);
     }
-
     return angles;
+}
+
+/**
+ * The most any point of the boom can move when the slew turns from a sampled
+ * angle to the angle halfway to the next sample (the worst case between two
+ * samples).
+ *
+ * The slew turns the boom about the vertical line through its foot. Every point
+ * of the boom cylinder is at most sqrt(L^2 + r^2) from the foot, and a point at
+ * distance d from the turning line moves by 2 d sin(delta / 2) when the slew
+ * turns by delta. Here delta is half of `maxGapDeg`: any angle between two
+ * samples is within half a gap of the nearest one. The distance between two
+ * solids changes by at most the distance the boom points move, so the real
+ * clearance at any angle is at least (sampled clearance) - (this value).
+ */
+export function betweenSamplesAllowanceM(boom: BoomPlacement, maxGapDeg: number): number {
+    const reachM = Math.hypot(boom.boomLengthM, boom.boomRadiusM);
+    const deltaRad = Math.min(((maxGapDeg / 2) * Math.PI) / 180, Math.PI);
+    return 2 * reachM * Math.sin(deltaRad / 2);
 }
 
 /**
@@ -186,13 +271,17 @@ export function generateSlewAngles(fromDeg: number, toDeg: number, stepDeg: numb
  *    10 cm tolerance."
  *
  * Limit: this samples the swing, it does not search it continuously. The true
- * closest angle can fall between two samples, and a very shallow intrusion
- * (about 1 cm) can fall between two samples of a coarse step. Example from the
- * tests: a 20 m boom tip reaching 1 cm past a wall at 180° is found as
- * CRITICAL with a 1° step, but a 5° step reports WARNING (0.009 m) and
- * `anyCollision = false`. WARNING and CRITICAL are both red, so the colour does
- * not change; keep the step at 2° to 5° as the BACKLOG says, and use a smaller
- * step (up to MAX_SWEEP_SAMPLES samples) when the gap is very small.
+ * closest angle can fall between two samples. So a SAFE result at the samples is
+ * not enough: `sweepStatus` is SAFE only when the clearance is also proved between
+ * the samples (`guaranteedMinDistanceM`, which subtracts
+ * `betweenSamplesAllowanceM`). If the step is too coarse for that, `sweepStatus`
+ * is WARNING (red), never SAFE. This matters most when `clearanceLimitM` is 0,
+ * because then the WARNING zone is off and a sampled distance of a few
+ * centimetres would otherwise read as SAFE. Example from the tests: a 20 m boom
+ * tip reaching 1 cm past a wall at 180° is CRITICAL with a 1° step; a 5° step
+ * samples 0.009 m from the wall, and `sweepStatus` is WARNING (not SAFE, even
+ * with a limit of 0). Keep the step at 2° to 5° as the BACKLOG says, and use a
+ * smaller step (up to MAX_SWEEP_SAMPLES samples) to prove a small gap.
  *
  * @param factory - WASM-backed ShapeFactory.
  * @param basePlacement - Boom placement template (slewDeg is overridden per step).
@@ -226,33 +315,48 @@ export function sweepSlew(
     let worstStep: SwingSweepReport["worstStep"] = null;
     let anyCollision = false;
 
-    for (const angle of angles) {
-        const placement: BoomPlacement = { ...basePlacement, slewDeg: angle };
-        const report = computeSiteClearance(factory, placement, buildings, powerLine);
+    // The obstacles do not move, so build them once (not at every angle) and free them at the end.
+    // The boom is built at each angle and freed inside checkPreparedObstacles.
+    const obstacles = prepareObstacles(factory, buildings, powerLine);
+    try {
+        for (const angle of angles) {
+            const placement: BoomPlacement = { ...basePlacement, slewDeg: angle };
+            const report = checkPreparedObstacles(factory, placement, obstacles);
 
-        steps.push({ slewDeg: angle, report });
+            steps.push({ slewDeg: angle, report });
 
-        if (report.anyCollision) {
-            anyCollision = true;
-        }
+            if (report.anyCollision) {
+                anyCollision = true;
+            }
 
-        // Update worstStep: pick the result with the highest severity,
-        // then the smallest distance.
-        if (report.worstCase) {
-            if (!worstStep) {
-                worstStep = { slewDeg: angle, result: report.worstCase };
-            } else {
-                const currentSev = severity(worstStep.result.status);
-                const newSev = severity(report.worstCase.status);
-                if (
-                    newSev < currentSev ||
-                    (newSev === currentSev && report.worstCase.minDistanceM < worstStep.result.minDistanceM)
-                ) {
+            // Update worstStep: pick the result with the highest severity,
+            // then the smallest distance.
+            if (report.worstCase) {
+                if (!worstStep) {
                     worstStep = { slewDeg: angle, result: report.worstCase };
+                } else {
+                    const currentSev = severity(worstStep.result.status);
+                    const newSev = severity(report.worstCase.status);
+                    if (
+                        newSev < currentSev ||
+                        (newSev === currentSev &&
+                            report.worstCase.minDistanceM < worstStep.result.minDistanceM)
+                    ) {
+                        worstStep = { slewDeg: angle, result: report.worstCase };
+                    }
                 }
             }
         }
+    } finally {
+        obstacles.dispose();
     }
+
+    const maxAngleGapDeg = angles.reduce(
+        (gap, angle, i) => (i === 0 ? gap : Math.max(gap, Math.abs(angle - angles[i - 1]))),
+        0,
+    );
+    const allowanceM = betweenSamplesAllowanceM(basePlacement, maxAngleGapDeg);
+    const verdict = judgeWholeSwing(steps, anyCollision, allowanceM);
 
     return {
         fromDeg,
@@ -262,6 +366,89 @@ export function sweepSlew(
         steps,
         worstStep,
         anyCollision,
+        maxAngleGapDeg,
+        betweenSamplesAllowanceM: allowanceM,
+        guaranteedMinDistanceM: verdict.guaranteedMinDistanceM,
+        sweepStatus: verdict.status,
+        sweepStatusNote: verdict.note,
         disclaimer: "Planning aid, not a certified lift plan.",
+    };
+}
+
+/**
+ * Turns the sampled results into one verdict for the whole swing, including the
+ * angles between the samples (see `betweenSamplesAllowanceM`).
+ */
+function judgeWholeSwing(
+    steps: SweepStep[],
+    anyCollision: boolean,
+    allowanceM: number,
+): {
+    status: SwingSweepReport["sweepStatus"];
+    guaranteedMinDistanceM: number | null;
+    note: string;
+} {
+    // Smallest sampled distance of each obstacle, with its own clearance limit.
+    const perObstacle = new Map<
+        string,
+        { label: string; minM: number; limitM: number; sampledWarning: boolean }
+    >();
+    for (const step of steps) {
+        for (const r of step.report.obstacles) {
+            const prev = perObstacle.get(r.obstacleId);
+            const sampledWarning = r.status !== "SAFE";
+            if (!prev) {
+                perObstacle.set(r.obstacleId, {
+                    label: r.obstacleLabel,
+                    minM: r.minDistanceM,
+                    limitM: r.clearanceLimitM,
+                    sampledWarning,
+                });
+            } else {
+                prev.minM = Math.min(prev.minM, r.minDistanceM);
+                prev.sampledWarning = prev.sampledWarning || sampledWarning;
+            }
+        }
+    }
+
+    if (perObstacle.size === 0) {
+        return {
+            status: null,
+            guaranteedMinDistanceM: null,
+            note: "No obstacles were checked, so no verdict. This is not SAFE.",
+        };
+    }
+
+    let guaranteedMinDistanceM = Number.POSITIVE_INFINITY;
+    let notProved: { label: string; lowerM: number; limitM: number; sampledWarning: boolean } | null = null;
+    for (const o of perObstacle.values()) {
+        const lowerM = o.minM - allowanceM;
+        guaranteedMinDistanceM = Math.min(guaranteedMinDistanceM, lowerM);
+        // Proved clear over the whole swing: at least the limit, and above 0.
+        const proved = lowerM >= o.limitM && lowerM > 0;
+        if (!proved && (!notProved || lowerM < notProved.lowerM)) {
+            notProved = { label: o.label, lowerM, limitM: o.limitM, sampledWarning: o.sampledWarning };
+        }
+    }
+
+    if (anyCollision) {
+        return {
+            status: "CRITICAL",
+            guaranteedMinDistanceM,
+            note: "A sampled angle collides with or touches an obstacle.",
+        };
+    }
+    if (notProved) {
+        const note = notProved.sampledWarning
+            ? `${notProved.label} is closer than its clearance limit of ${notProved.limitM} m at a sampled angle.`
+            : `Clear at every sampled angle, but with this step the swing between samples can come ${allowanceM.toFixed(3)} m closer, ` +
+              `so ${notProved.label} is not proved clear (guaranteed distance ${notProved.lowerM.toFixed(3)} m, ` +
+              `limit ${notProved.limitM} m). Use a smaller step.`;
+        return { status: "WARNING", guaranteedMinDistanceM, note };
+    }
+    return {
+        status: "SAFE",
+        guaranteedMinDistanceM,
+        note: "Every obstacle is clear by at least its limit at the samples and between them.",
     };
 }
