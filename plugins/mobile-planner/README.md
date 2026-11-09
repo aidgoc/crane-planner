@@ -121,9 +121,15 @@ record and the traceable page-17 transcription.
   - Matches hand moment balance $\sum F_z = W$, $\sum M_x = W \cdot e_y$, $\sum M_y = W \cdot e_x$.
   - Stability: A negative reaction flags pad uplift (tipping condition).
 - **Footprint on Plan (CI-2):**
-  - 2D Polygon: `getOutriggerFootprint()` computes the 4 pad coordinates and the closed 4-point CCW bounding polygon `[FL, RL, RR, FR]` around the crane centre. The footprint is not rotated: the crane has no heading input, so the pads are aligned to the X and Y axes.
-  - 3D CAD Visualization: `MobileCraneBodyNode` renders the 4 outrigger pad plates on the ground plane ($Z = 0$) plus front and rear outrigger extension beams connecting the pads across the chassis.
-  - Live Synchronization: `MobileCranePlacementPanel` updates `MobileCraneBodyNode.outriggerLengthSpreadM` and `outriggerWidthSpreadM` in real-time as the user adjusts the outrigger spread inputs.
+  - **2D Polygon & Coordinate Convention:** `getOutriggerFootprint()` computes the 4 pad coordinates and the closed 4-point counter-clockwise (CCW) polygon `[FL, RL, RR, FR]` around the crane centre:
+    - $+X$ = Longitudinal axis (forward / East at heading 0).
+    - $+Y$ = Transverse axis (left side / North at heading 0).
+    - Pad coordinates: $\text{FL}(+L/2, +B/2)$ [Quad 1], $\text{RL}(-L/2, +B/2)$ [Quad 2], $\text{RR}(-L/2, -B/2)$ [Quad 3], $\text{FR}(+L/2, -B/2)$ [Quad 4].
+    - Shoelace signed area $\frac{1}{2} \sum (x_i y_{i+1} - x_{i+1} y_i) = +L \cdot B > 0$, mathematically verifying counter-clockwise winding in standard Cartesian $(X, Y)$ space.
+    - *Screen/SVG Note:* In 2D raster/SVG coordinates where $+Y$ points downwards on screen, Cartesian CCW appears inverted unless the view matrix inverts $Y$.
+  - **Fail-Safe 3D CAD Visualization:** `MobileCraneBodyNode.generateShape()` renders the 4 outrigger pad plates on the ground plane ($Z = 0$) plus front and rear transverse extension beams connecting the pads across the chassis. If any pad plate, beam, or chassis component fails to build in the kernel, `generateShape()` immediately returns `Result.err(...)` rather than silently omitting components.
+  - **Polygon Data vs 3D Assembly:** `getFootprint().polygon` returns the 2D polygon data structure for clearance checks and report generation (M9/S7), while `generateShape()` builds the 3D physical solids for viewport display.
+  - **Live Synchronization:** `MobileCranePlacementPanel` updates `MobileCraneBodyNode.outriggerLengthSpreadM` and `outriggerWidthSpreadM` in real-time as the user adjusts the outrigger spread inputs.
 
 
 

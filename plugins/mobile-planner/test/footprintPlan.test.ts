@@ -7,11 +7,29 @@
 // Owner: Sujal
 // ============================================================================
 
-import type { IShape, IShapeFactory, IView, Plane, Result, XYZ } from "@chili3d/core";
+import { type IShape, type IShapeFactory, type IView, type Plane, Result, type XYZ } from "@chili3d/core";
 import { createMockDocument } from "@chili3d/core/test-utils";
+import { ShapeFactory } from "@chili3d/wasm";
 import { MobileCraneBodyNode } from "../src/body/mobileCraneBody";
 import { PLANNING_DISCLAIMER } from "../src/modules/outriggers";
 import { MobileCranePlacementPanel } from "../src/ui/mobilePlacementPanel";
+import "./setup";
+
+/**
+ * Shoelace formula for signed area of a 2D polygon.
+ * Positive signed area indicates counter-clockwise (CCW) winding in standard Cartesian (X, Y) coordinates.
+ * Area = 0.5 * sum_{i=0}^{n-1} (x_i * y_{i+1} - x_{i+1} * y_i).
+ */
+function calculateSignedArea(points: ReadonlyArray<{ readonly xM: number; readonly yM: number }>): number {
+    let area = 0;
+    const n = points.length;
+    for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        area += points[i].xM * points[j].yM;
+        area -= points[j].xM * points[i].yM;
+    }
+    return area / 2;
+}
 
 describe("M3: Outrigger Footprint Polygon on Plan (Sujal)", () => {
     // -------------------------------------------------------------------------
@@ -66,11 +84,17 @@ describe("M3: Outrigger Footprint Polygon on Plan (Sujal)", () => {
     //   Crane at (0, 0) m
     //   Longitudinal spread L = 7.7 m => halfL = 3.85 m
     //   Transverse spread B = 7.2 m   => halfB = 3.60 m
-    //   FL = (+3.85, +3.60) m
-    //   FR = (+3.85, -3.60) m
-    //   RL = (-3.85, +3.60) m
-    //   RR = (-3.85, -3.60) m
+    //   FL = (+3.85, +3.60) m  [Quadrant 1]
+    //   RL = (-3.85, +3.60) m  [Quadrant 2]
+    //   RR = (-3.85, -3.60) m  [Quadrant 3]
+    //   FR = (+3.85, -3.60) m  [Quadrant 4]
     //   Polygon: CCW [FL, RL, RR, FR]
+    //   Signed Area (Shoelace formula):
+    //     (3.85)(3.60) - (-3.85)(3.60) = 13.86 - (-13.86) = +27.72
+    //     (-3.85)(-3.60) - (-3.85)(3.60) = 13.86 - (-13.86) = +27.72
+    //     (-3.85)(-3.60) - (3.85)(-3.60) = 13.86 - (-13.86) = +27.72
+    //     (3.85)(3.60) - (3.85)(-3.60)   = 13.86 - (-13.86) = +27.72
+    //     Sum = 110.88 => Signed Area = 110.88 / 2 = +55.44 m² (> 0, counter-clockwise)
     // -------------------------------------------------------------------------
     test("getFootprint returns exact hand-calculated pad coordinates for crane at origin", () => {
         const doc = createMockDocument();
@@ -104,6 +128,11 @@ describe("M3: Outrigger Footprint Polygon on Plan (Sujal)", () => {
         expect(fp.polygon[1]).toEqual(fp.pads.rearLeft);
         expect(fp.polygon[2]).toEqual(fp.pads.rearRight);
         expect(fp.polygon[3]).toEqual(fp.pads.frontRight);
+
+        // Verify signed area proves counter-clockwise winding (Anjali review finding 1)
+        const signedArea = calculateSignedArea(fp.polygon);
+        expect(signedArea).toBeCloseTo(7.7 * 7.2, 4);
+        expect(signedArea).toBeGreaterThan(0);
     });
 
     // -------------------------------------------------------------------------
@@ -116,6 +145,7 @@ describe("M3: Outrigger Footprint Polygon on Plan (Sujal)", () => {
     //   FR = (15.0 + 4.0, 25.0 - 3.0) = (19.0, 22.0) m
     //   RL = (15.0 - 4.0, 25.0 + 3.0) = (11.0, 28.0) m
     //   RR = (15.0 - 4.0, 25.0 - 3.0) = (11.0, 22.0) m
+    //   Signed Area: L * B = 8.0 * 6.0 = +48.0 m² (translation-invariant, CCW)
     // -------------------------------------------------------------------------
     test("getFootprint follows translated crane coordinates on the site plan", () => {
         const doc = createMockDocument();
@@ -139,6 +169,11 @@ describe("M3: Outrigger Footprint Polygon on Plan (Sujal)", () => {
         const updatedFp = node.getFootprint();
         expect(updatedFp.pads.frontLeft).toEqual({ xM: 24.0, yM: 33.0 });
         expect(updatedFp.pads.rearRight).toEqual({ xM: 16.0, yM: 27.0 });
+
+        // Verify signed area is translation-invariant and remains strictly positive CCW
+        const signedArea = calculateSignedArea(updatedFp.polygon);
+        expect(signedArea).toBeCloseTo(8.0 * 6.0, 4);
+        expect(signedArea).toBeGreaterThan(0);
     });
 
     // -------------------------------------------------------------------------
@@ -257,5 +292,108 @@ describe("M3: Outrigger Footprint Polygon on Plan (Sujal)", () => {
     // -------------------------------------------------------------------------
     test("always displays the required planning disclaimer", () => {
         expect(PLANNING_DISCLAIMER).toBe("Planning aid, not a certified lift plan.");
+    });
+
+    // -------------------------------------------------------------------------
+    // Test 7: Fail-safe 3D geometry creation (Anjali review finding 2)
+    // Never silently skip failed pads or beams to prevent misleading 3D models.
+    // -------------------------------------------------------------------------
+    test("generateShape returns Result.err if factory fails to create any pad plate or beam", () => {
+        const doc = createMockDocument();
+        const node = new MobileCraneBodyNode({
+            document: doc,
+            craneCentreXM: 0,
+            craneCentreYM: 0,
+            outriggerLengthSpreadM: 8.0,
+            outriggerWidthSpreadM: 6.0,
+            padAreaM2: 1.0,
+        });
+
+        const mockShape = {} as IShape;
+
+        // 1. Factory that fails when creating the 2nd pad plate (box call index 3)
+        let boxCallCount = 0;
+        const failingPadFactory: IShapeFactory = {
+            box(_plane: Plane, _dx: number, _dy: number, _dz: number): Result<IShape> {
+                boxCallCount++;
+                // 1 = chassis, 2 = pad 1, 3 = pad 2 (fails!)
+                if (boxCallCount === 3) {
+                    return Result.err("OCCT pad generation failed");
+                }
+                return Result.ok(mockShape);
+            },
+            cylinder(_dir: XYZ, _origin: XYZ, _radius: number, _height: number): Result<IShape> {
+                return Result.ok(mockShape);
+            },
+            combine(_shapes: IShape[]): Result<IShape> {
+                return Result.ok(mockShape);
+            },
+        } as unknown as IShapeFactory;
+
+        const padFailResult = node.generateShape(failingPadFactory);
+        expect(padFailResult.isOk).toBe(false);
+        expect(padFailResult.error).toContain("pad");
+
+        // 2. Factory that fails when creating the front beam (box call index 6: 1 chassis + 4 pads + front beam)
+        boxCallCount = 0;
+        const failingBeamFactory: IShapeFactory = {
+            box(_plane: Plane, _dx: number, _dy: number, _dz: number): Result<IShape> {
+                boxCallCount++;
+                if (boxCallCount === 6) {
+                    return Result.err("OCCT front beam generation failed");
+                }
+                return Result.ok(mockShape);
+            },
+            cylinder(_dir: XYZ, _origin: XYZ, _radius: number, _height: number): Result<IShape> {
+                return Result.ok(mockShape);
+            },
+            combine(_shapes: IShape[]): Result<IShape> {
+                return Result.ok(mockShape);
+            },
+        } as unknown as IShapeFactory;
+
+        const beamFailResult = node.generateShape(failingBeamFactory);
+        expect(beamFailResult.isOk).toBe(false);
+        expect(beamFailResult.error).toContain("beam");
+    });
+
+    // -------------------------------------------------------------------------
+    // Test 8: Real OpenCASCADE CAD assembly generation (Anjali verification point 3)
+    // -------------------------------------------------------------------------
+    test("generateShape creates real OpenCASCADE B-Rep compound solid via WASM ShapeFactory", () => {
+        const doc = createMockDocument();
+        const node = new MobileCraneBodyNode({
+            document: doc,
+            craneCentreXM: 10,
+            craneCentreYM: 20,
+            outriggerLengthSpreadM: 8.0,
+            outriggerWidthSpreadM: 6.0,
+            padAreaM2: 1.0,
+            boomLengthM: 38.0,
+            boomAngleDeg: 60.0,
+        });
+
+        const realFactory = new ShapeFactory();
+        const result = node.generateShape(realFactory);
+        expect(result.isOk).toBe(true);
+
+        const compoundShape = result.value;
+        expect(compoundShape).toBeDefined();
+
+        const bbox = compoundShape.boundingBox();
+        // Crane at (10, 20) m = (10000, 20000) mm.
+        // Pad centres:
+        //   FL: (10 + 4, 20 + 3) = (14, 23) m = (14000, 23000) mm
+        //   FR: (10 + 4, 20 - 3) = (14, 17) m = (14000, 17000) mm
+        //   RL: (10 - 4, 20 + 3) = (6, 23) m = (6000, 23000) mm
+        //   RR: (10 - 4, 20 - 3) = (6, 17) m = (6000, 17000) mm
+        // Pad size = 1000 x 1000 mm => X spans [6000 - 500, 14000 + 500] = [5500, 14500] mm
+        // Y spans [17000 - 500, 23000 + 500] = [16500, 23500] mm
+        // Z spans from 0 (ground pad bottom) up to boom tip (~35 m)
+        expect(bbox.min.x).toBeLessThanOrEqual(5500);
+        expect(bbox.max.x).toBeGreaterThanOrEqual(14500);
+        expect(bbox.min.y).toBeLessThanOrEqual(16500);
+        expect(bbox.max.y).toBeGreaterThanOrEqual(23500);
+        expect(bbox.min.z).toBeCloseTo(0, 0); // Resting flush on ground Z = 0
     });
 });

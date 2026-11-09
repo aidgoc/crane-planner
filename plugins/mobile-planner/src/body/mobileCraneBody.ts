@@ -200,9 +200,10 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
             }),
         );
         const chassisRes = factory.box(chassisPlane, carrierLengthMm, carrierWidthMm, carrierHeightMm);
-        if (chassisRes.isOk) {
-            shapes.push(chassisRes.value);
+        if (!chassisRes.isOk) {
+            return Result.err(chassisRes.error ?? "Failed to create crane carrier chassis box");
         }
+        shapes.push(chassisRes.value);
 
         // 2. Telescoping Boom Cylinder starting at pivot
         const pivotXMm = cxMm + KIT.PIVOT_OFFSET_M * Math.cos(slewRad) * MM_PER_M;
@@ -219,9 +220,10 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
         const boomLengthMm = this.boomLengthM * MM_PER_M;
 
         const boomRes = factory.cylinder(dirXYZ, originXYZ, boomRadiusMm, boomLengthMm);
-        if (boomRes.isOk) {
-            shapes.push(boomRes.value);
+        if (!boomRes.isOk) {
+            return Result.err(boomRes.error ?? "Failed to create crane boom cylinder");
         }
+        shapes.push(boomRes.value);
 
         // 3. Outrigger Beams and Pads on Plan (M3 Footprint on Plan)
         // Pad dimensions: square plate of side sqrt(padArea), default 1.0 m, thickness 0.1 m (100 mm) resting on ground (z = 0..100)
@@ -252,9 +254,10 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
                 }),
             );
             const padRes = factory.box(padPlane, padSideMm, padSideMm, padThicknessMm);
-            if (padRes.isOk) {
-                shapes.push(padRes.value);
+            if (!padRes.isOk) {
+                return Result.err(padRes.error ?? "Failed to create outrigger pad plate");
             }
+            shapes.push(padRes.value);
         }
 
         // 3.2 Front and Rear Transverse Outrigger Beams connecting pads across chassis
@@ -272,9 +275,10 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
             this.outriggerWidthSpreadM * MM_PER_M,
             beamHeightMm,
         );
-        if (frontBeamRes.isOk) {
-            shapes.push(frontBeamRes.value);
+        if (!frontBeamRes.isOk) {
+            return Result.err(frontBeamRes.error ?? "Failed to create front outrigger beam");
         }
+        shapes.push(frontBeamRes.value);
 
         // Rear beam at X = cxMm - halfLMm
         const rearBeamPlane = Plane.XY.translateTo(
@@ -290,9 +294,10 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
             this.outriggerWidthSpreadM * MM_PER_M,
             beamHeightMm,
         );
-        if (rearBeamRes.isOk) {
-            shapes.push(rearBeamRes.value);
+        if (!rearBeamRes.isOk) {
+            return Result.err(rearBeamRes.error ?? "Failed to create rear outrigger beam");
         }
+        shapes.push(rearBeamRes.value);
 
         if (shapes.length === 0) {
             return Result.err("Failed to generate crane geometry");
