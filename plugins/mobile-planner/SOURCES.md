@@ -32,6 +32,10 @@ interpolate or extrapolate values that the manufacturer does not publish.
 | Rigid plate statics: R_i = W/4 ± W*e_x/(2L) ± W*e_y/(2B) | Pad reaction equilibrium model | Classical statics equilibrium: sum F_z = W, sum M_x = W*e_y, sum M_y = W*e_x | STANDARD STATICS |
 | Outrigger footprint coordinates (FL, FR, RL, RR) | 4-pad positions and bounding polygon (M3) | getOutriggerFootprint analytical transformation: cx ± L/2, cy ± B/2 | STANDARD GEOMETRY |
 | Pad plate thickness (0.1 m), beam cross-section (0.3 m x 0.4 m) | 3D visual geometry for outrigger pads & beams | Indicative structural proportions for CAD site visualization | INDICATIVE |
+| Ground bearing pressure p = R / A | Pad bearing pressure (M4) | Standard contact pressure: reaction R (tonnes) divided by pad area A (m²) | STANDARD STATICS |
+| Allowable bearing capacity q_allow | User-entered allowable soil bearing capacity (t/m²) for PASS/FAIL comparison | Backlog item M4 specification: user input, not an invented soil value | USER INPUT / PARAMETER |
+| Standard gravity g = 9.80665 kN/t | Conversion factor t/m² to kPa | BIPM / SI definition of standard gravity | VERIFIED |
+| Tipping: any pad reaction < 0 | Uplift / stability detection (M4) | Classical statics: negative reaction = loss of contact = incipient overturning | STANDARD STATICS |
 | Tower A: [25,20]..[65,42], 75 m; Tower B: [50,54]..[70,68], 45 m; Podium: [15,12]..[75,50], 9 m | Site building obstacles | public/sample-site/sample-site.json | SYNTHETIC / SAMPLE SITE |
 | Power line at x = -9.0 m, 22 kV, clearance limit 6.0 m | Overhead power line hazard | public/sample-site/sample-site.json, "clearance_note" | INDICATIVE |
 | Power line vertical wall extents (Y ±200 m, Z 0–200 m) | Geometric model for power line hazard | Conservative large bounding extent (wire height not in sample data) | INDICATIVE / ASSUMPTION |
