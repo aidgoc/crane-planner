@@ -108,8 +108,8 @@ export interface SiteObstacle {
     readonly yM?: number;
 }
 
-/** Result of a single obstacle clearance check. */
-export interface ObstacleClearanceResult {
+/** Result of a single obstacle clearance check for 2D horizontal placement. */
+export interface PlacementObstacleClearanceResult {
     readonly label: string;
     /** 2D horizontal distance from boom to obstacle in metres. */
     readonly distanceM: number;
@@ -146,7 +146,7 @@ export interface MobilePlacementResult {
     /** Ground bearing status: PASS, FAIL or NOT_CHECKED. */
     readonly bearingStatus: "PASS" | "FAIL" | "NOT_CHECKED";
     /** Per-obstacle clearance results (empty if no obstacles supplied). */
-    readonly obstacleClearances: readonly ObstacleClearanceResult[];
+    readonly obstacleClearances: readonly PlacementObstacleClearanceResult[];
     /** Overall clearance status across all obstacles: PASS, FAIL or NOT_CHECKED. */
     readonly clearanceStatus: "PASS" | "FAIL" | "NOT_CHECKED";
     /** Overall safety verdict: ALL PASS only when capacity, stability, bearing, and clearance all pass. */
@@ -415,7 +415,7 @@ export function computePlacement(
     const boomTipY = input.craneCentreYM + operatingRadiusM * sinSlew;
 
     // --- 7. Obstacle clearances (Polygon, Power Line wall, Point) ---
-    const obstacleClearances: ObstacleClearanceResult[] = obstacles.map((obs) => {
+    const obstacleClearances: PlacementObstacleClearanceResult[] = obstacles.map((obs) => {
         let distanceM: number;
         let isCollision = false;
         let hasGeometry = true;

@@ -244,7 +244,7 @@ export class MobileCranePlacementPanel {
             // Crane source note
             div({
                 className: style.note,
-                textContent: `Crane: ${this.getCraneName()}. All default values are INDICATIVE — replace with your site-specific data.`,
+                textContent: `Crane: ${this.getCraneName()}. All default values are INDICATIVE — replace with your site-specific data (e.g. 60° boom angle, 10 t payload, 0.5 t rigging).`,
             }),
             // Error banner for invalid inputs
             this.errorBanner,

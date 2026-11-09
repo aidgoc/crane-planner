@@ -8,13 +8,13 @@ import { KIT } from "./modules/craneModel";
 
 export * from "./body/mobileCraneBody";
 export * from "./clearance/distance";
+export * from "./clearance/siteClearance";
 export * from "./modules/craneModel";
 export * from "./modules/outriggers";
 export * from "./modules/placementState";
 export * from "./modules/sampleSiteObstacles";
 export * from "./ui/liftSummary";
 export * from "./ui/mobilePlacementPanel";
-export * from "./clearance/siteClearance";
 
 const MobilePlannerPlugin: Plugin = {
     commands: [ShowCraneCommand, PlaceMobileCraneCommand],
@@ -64,10 +64,7 @@ const MobilePlannerPlugin: Plugin = {
     ],
 };
 
-export * from "./modules/craneModel";
 export { calculateLiftCheck } from "./modules/liftCheck";
-export * from "./modules/outriggers";
 export * from "./ui/groundBearingPanel";
-export * from "./ui/liftSummary";
 export { KIT };
 export default MobilePlannerPlugin;
