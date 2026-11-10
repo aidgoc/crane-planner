@@ -22,7 +22,13 @@ Planner. The catalogue contains two verified entries:
 | `src/commands/placeCrane.ts` | `Place Tower Crane` command that opens the live placement panel. |
 | `src/model/cranePlacement.ts` | Placement/ring geometry and the INDICATIVE T7 catalogue defaults. |
 | `src/geometry/clearance.ts` | Pure T6 clearance kernel: point-in-polygon, distances, swing circle versus polygon and annulus/band versus polygon. |
-| `src/ui/placementPanel.ts` | Live float panel for mast position, slew and INDICATIVE radii. |
+| `src/geometry/oversailGeometry.ts` | T8 geometry helpers for boundaries, neighbours, no-go zones, roads and power lines. |
+| `src/model/oversailChecks.ts` | T8 oversail checks with PASS/FAIL/PERMISSION NEEDED results. |
+| `src/model/oversailTypes.ts` | T8 site, obstacle and check-result types. |
+| `src/model/siteSnapshot.ts` | Adapts the shared v1 site format and the legacy sample file into an `OversailSite`, including metre-unit validation. |
+| `src/model/heightChecks.ts` | Pure T9 hook-height, freestanding-height and tie-in checks. |
+| `src/model/heightTypes.ts` | T9 height inputs, results and status types. |
+| `src/ui/placementPanel.ts` | Live float panel for mast position, slew, INDICATIVE radii, oversail and height checks. |
 | `src/view/craneScene.ts` | Three.js rings, jib and counter-jib scene for the placement panel. |
 | `docs/SOURCES.md` | Source table, page convention, capacity methods, ambiguities and limitations. |
 
@@ -43,7 +49,7 @@ examples.
 - maximum hook-radius ring (solid orange)
 - minimum hook-radius ring (dashed green)
 - counter-jib sweep ring (dashed blue)
-- fixed 20 m base-exclusion ring (dashed grey)
+- fixed 20 m base-exclusion ring (dashed grey, `INDICATIVE`)
 - jib, counter-jib and mast marker
 
 Drag the mast marker in the viewport, type mast coordinates, or move the slew slider. Every change
@@ -52,7 +58,46 @@ updates the rings and result panel immediately; there is no Calculate button.
 The T7 placement panel's internal catalogue dimensions are placeholders marked `INDICATIVE`; they are
 not sourced crane data. The catalogue/capacity module uses the sourced values documented under
 **Crane data** below. Replace placement defaults from the applicable load chart and cite the document
-and page before using the result.
+and page before using the result. The fixed 20 m base-exclusion radius is also `INDICATIVE`; confirm
+the crane base and exclusion zone from the manufacturer before use.
+
+## T8 oversail checks
+
+The placement panel recalculates clearance checks on every valid change and shows each result as `PASS`, `FAIL` or `PERMISSION NEEDED`, plus an overall status:
+
+- **Site boundary** — a jib envelope outside the plot is reported as a fail because no boundary oversail rule was supplied; this is a planning constraint, not a quoted standard.
+- **Road** — modelled as a horizontal band between `yFromM` and `yToM`, infinite in X.
+- **Overhead power line** — modelled as a vertical line at `xM`, infinite in Y. Required distance is jib radius plus clearance. The sample 6 m clearance is labelled `INDICATIVE`.
+- **Neighbours** — only buildings named in `no_oversail` or `oversail_by_permission` are checked. Overflying a `no_oversail` neighbour fails; a permission neighbour returns `PERMISSION NEEDED`.
+- **No-go zones** — circular exclusion zones; any overlap with the jib envelope fails.
+
+The check covers the jib/full hook envelope only, not the counter-jib. Supply zones (`S1` rebar yard, `S2` formwork store, `S3` concrete pump) are not treated as obstacles. Proposed buildings are not treated as neighbours unless they are explicitly named in the neighbour rule arrays.
+
+`src/model/siteSnapshot.ts` adapts the shared v1 site format and the legacy sample file into an `OversailSite`. The adapter requires metre units (`units: "m"`); missing, unsupported or invalid units are rejected before any check runs. The legacy sample has no boundary vertex list; the panel then shows `Site data unavailable...` and does not report a boundary result. Boundary geometry is never approximated from plot width/depth.
+
+## T9 height and tie-in checks
+
+`src/model/heightChecks.ts` is a pure TypeScript check with hand-worked tests. Building heights come from the shared site model (`buildings[].heightM`, metres above the same ground datum).
+
+- **Controlling height** — the tallest individual building roof above ground. Heights are **not summed**: the sample's Tower A is 75 m and the podium is a separate 9 m lower roof, so the controlling height is 75 m, not 84 m. This follows BACKLOG T9/S3 (the Tower A solid is 40 x 22 x 75 m "before the podium") and the sample-site README ("hook clear Tower A at 75 m plus clearance").
+- **Required hook height** — controlling building height + hook clearance. With the default INDICATIVE 2 m clearance and Tower A at 75 m, the requirement is **77 m**.
+- **Hook check** — the available hook height must be at least the required hook height; otherwise the check fails and reports the shortfall.
+- **Freestanding check** — if the required hook height exceeds the freestanding height, the result is `TIE-IN REQUIRED`.
+- **Tie-in levels** — INDICATIVE levels above ground, starting at the freestanding limit and repeating every tie-in spacing until the required hook height is covered. For 77 m required, 50 m freestanding and 20 m spacing: 50 m, 70 m. The crane supplier's tie-in schedule governs.
+
+Hook height, hook clearance, freestanding height and tie-in spacing are all shown as `INDICATIVE`; replace them with the supplied crane configuration or the project/standard value and cite the source. Missing or invalid building heights make the height check `UNAVAILABLE` rather than passing silently.
+
+## Shared site data source
+
+The site-model plugin owns the production site data path: `src/siteSource.ts` exposes `loadSiteProjectFromDxf` (parse arbitrary DXF text) and `loadSiteProjectFromUrl` (an explicit demo/test source only). `PlaceTowerCraneCommand` reads the **active project's** site selection through the site-model plugin's `readSiteSource` (stored under `document.userData.siteSource`), validates it with the site-model schema, then adapts the resulting `SiteProject` with `adaptSiteSnapshot`. There is no second site schema and no invented `document.userData` key — the selection key and its shape are owned by `plugins/site-model/src/siteSelection.ts`.
+
+Each Chili3D project (`IDocument`) stores its own selection: import a DXF with the site-model plugin's **Import Site DXF** command while a project is open, and every placement run in that project plans against that site. Switching the active project disposes the open panel's overlay, and the next run plans against the new project's site.
+
+If the active project has no selected site, the command shows the `towerplanner.site.noActiveSite` toast (naming the document) and opens the panel without site data. If the stored selection cannot be read or parsed, or adaptation fails, the command shows the `towerplanner.site.unavailable` toast and likewise opens the panel without site data. T8 and T9 then report `UNAVAILABLE`; they never substitute a fabricated site or return a false `PASS`. The command never fetches the fixed `sample-site/sample-site.dxf` URL; the sample file remains an explicit demo source documented in `public/sample-site/README.md`.
+
+## Placement persistence
+
+The crane placement is a **temporary plan overlay**, not a persistent document node. It is drawn as overlay meshes by `CraneScene`, is not written to the document or `document.userData`, and is not serialized. Closing the panel, closing the view or document, or disposing the panel removes the overlay meshes. Persistent crane document storage is not implemented in this PR.
 
 **Planning aid, not a certified lift plan.**
 

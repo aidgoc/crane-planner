@@ -14,6 +14,10 @@ export const en = {
         "towerplanner.place.help":
             "Place and move a tower crane, set INDICATIVE catalogue radii, rotate the jib and inspect the plan rings. Planning aid, not a certified lift plan.",
         "towerplanner.panel.title": "Tower Crane Placement",
+        "towerplanner.site.unavailable":
+            "Shared site data unavailable: {0}. T8/T9 checks cannot be performed; no PASS is reported.",
+        "towerplanner.site.noActiveSite":
+            "No site model is selected in project '{0}'. Use the Site Model plugin's Import Site DXF command first. T8/T9 checks cannot be performed; no PASS is reported.",
         "tower.dialog.title": "Tower crane pick check",
         "tower.dialog.intro":
             "Sample picks on the selected crane. Edit load, radius, jib or wind to re-check.",
