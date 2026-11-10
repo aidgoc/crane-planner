@@ -33,6 +33,15 @@ Lead: Ajit Kolhatkar. Reviewed by Tower & Mobile planner teams.
 
 ---
 
+## Per-project site selection
+
+Each Chili3D project (`IDocument`) stores its own site selection in the document's serialized `userData` under the key owned by `src/siteSelection.ts`. The stored value has the shape `{ kind: "dxfText", name, dxfText }` — the raw DXF text is re-parsed and re-validated on every read, never trusted blindly. Selections persist with the document through Chili3D serialization.
+
+- **`ImportSiteDxfCommand`** (`sitemodel.import`, ribbon Manager → Other) — prompts for a `.dxf` file, parses it with `loadSiteProjectFromDxf`, and stores the selection in the **active project's** `userData`. An invalid DXF is rejected with a toast and never overwrites a previously selected valid site.
+- **`readSiteSource` / `writeSiteSource` / `hasSiteSource` / `clearSiteSource`** — the selection API for this plugin and downstream planners: the tower-planner plans against the active project's selection, so switching the active project switches the site.
+
+---
+
 ## Boundary Parser Specification & Known Limitations
 
 The parser is designed for construction site layout drawings with the following specifications and current conventions:
@@ -51,8 +60,8 @@ The parser is designed for construction site layout drawings with the following 
 ## Build & Test
 
 ```bash
-# Run acceptance test suite
-npx rstest plugins/site-model/test/siteModel.test.ts
+# Run acceptance test suite (all site-model tests)
+npx rstest plugins/site-model
 
 # Run production build
 npm run build

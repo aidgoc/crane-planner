@@ -89,11 +89,11 @@ Hook height, hook clearance, freestanding height and tie-in spacing are all show
 
 ## Shared site data source
 
-The site-model plugin owns the production DXF path: `src/siteSource.ts` exposes `loadSiteProjectFromDxf` and `loadSiteProjectFromUrl`. `PlaceTowerCraneCommand` loads the shared `sample-site/sample-site.dxf` through that source, validates it with the site-model schema, then adapts the resulting `SiteProject` with `adaptSiteSnapshot`. There is no second site schema and no invented `document.userData` key.
+The site-model plugin owns the production site data path: `src/siteSource.ts` exposes `loadSiteProjectFromDxf` (parse arbitrary DXF text) and `loadSiteProjectFromUrl` (an explicit demo/test source only). `PlaceTowerCraneCommand` reads the **active project's** site selection through the site-model plugin's `readSiteSource` (stored under `document.userData.siteSource`), validates it with the site-model schema, then adapts the resulting `SiteProject` with `adaptSiteSnapshot`. There is no second site schema and no invented `document.userData` key — the selection key and its shape are owned by `plugins/site-model/src/siteSelection.ts`.
 
-The fixed `sample-site/sample-site.dxf` URL is an **interim** site-data source. It is used only until a project-file picker or an active shared-site selection is implemented; it is not a project-file selector and does not represent a user's site. The sample data and its limitations are documented in `public/sample-site/README.md`.
+Each Chili3D project (`IDocument`) stores its own selection: import a DXF with the site-model plugin's **Import Site DXF** command while a project is open, and every placement run in that project plans against that site. Switching the active project disposes the open panel's overlay, and the next run plans against the new project's site.
 
-If the DXF cannot be fetched or parsed, or adaptation fails, the command shows the `towerplanner.site.unavailable` toast and opens the panel without site data. T8 and T9 then report `UNAVAILABLE`; they never substitute a fabricated site or return a false `PASS`.
+If the active project has no selected site, the command shows the `towerplanner.site.noActiveSite` toast (naming the document) and opens the panel without site data. If the stored selection cannot be read or parsed, or adaptation fails, the command shows the `towerplanner.site.unavailable` toast and likewise opens the panel without site data. T8 and T9 then report `UNAVAILABLE`; they never substitute a fabricated site or return a false `PASS`. The command never fetches the fixed `sample-site/sample-site.dxf` URL; the sample file remains an explicit demo source documented in `public/sample-site/README.md`.
 
 ## Placement persistence
 

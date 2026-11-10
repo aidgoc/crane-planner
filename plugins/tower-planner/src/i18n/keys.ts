@@ -8,6 +8,7 @@ export const TOWER_I18N_KEYS = [
     "towerplanner.place.help",
     "towerplanner.panel.title",
     "towerplanner.site.unavailable",
+    "towerplanner.site.noActiveSite",
     "tower.dialog.title",
     "tower.dialog.intro",
     "tower.dialog.crane",
