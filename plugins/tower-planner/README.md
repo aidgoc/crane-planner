@@ -3,7 +3,7 @@
 Sourced tower-crane catalogue, capacity model, placement and clearance checks for the DGOC Crane
 Planner. The catalogue contains four entries:
 
-- **Potain MCT 88** (EN 14439 C25) — published per-radius 5 t hook chart lookup. Default entry.
+- **Potain MCT 88** (FEM 1.001-A3, as printed on the inspected datasheet) — published per-radius 5 t hook chart lookup. Default entry.
 - **Potain MCT 85 F5** (FEM 1.001-A3) — published per-radius load-chart lookup.
 - **JASO J438PA.2R, 213 ft TD** (EN 14439 C25 / FEM 1005-C25) — `INDICATIVE` luffing-jib
   configuration. Listed but **not evaluated** by the trolley-jib capacity engine.
@@ -68,17 +68,18 @@ and page before using the result.
 
 | Crane | Catalogue standard | Max capacity | Max working jib | Minimum radius | Default jib | Capacity source |
 | --- | --- | --- | --- | --- | --- | --- |
-| Potain MCT 88 | EN 14439 C25 | 5 t | 52 m | 2.7 m (printed) | 30 m (`INDICATIVE`) | Upper 5 t hook per-radius chart, datasheet p. 4 |
+| Potain MCT 88 | FEM 1.001-A3 (printed on inspected PDF) | 5 t | 52 m | 2.7 m (printed) | 30 m (`INDICATIVE`) | Upper 5 t hook per-radius chart, datasheet p. 4 |
 | Potain MCT 85 F5 | FEM 1.001-A3 | 5 t | 52 m | 2.7 m (printed) | 30 m (`INDICATIVE`) | Per-radius chart, datasheet p. 3 |
 | JASO J438PA.2R (213 ft TD) | EN 14439 C25 / FEM 1005-C25 | 16.0118 t (converted) | 64.9224 m (213 ft) | 24.9936 m (82 ft) | 213 ft (`INDICATIVE`) | Imperial chart, p. 2; not evaluated (luffing-jib) |
 | JASO J438PA.2R (213 ft 2R) | EN 14439 C25 / FEM 1005-C25 | 18.0076 t (converted) | 64.9224 m (213 ft) | 24.9936 m (82 ft) | 213 ft (`INDICATIVE`) | Imperial chart, p. 2; not evaluated (luffing-jib) |
 
-The `Catalogue standard` column records the standard associated with each catalogue entry, not
-necessarily the standard printed on every source document. For the MCT 88, the e-catalogue URL
-identifies **EN 14439 C25**, whereas the inspected 8-page MCT 88 PDF prints **FEM 1.001-A3** on all
-eight pages and does not print EN 14439 C25. Both attributions are preserved; they are **not** claimed
-to be equivalent. Which standard the `standard` field should represent remains pending mentor
-confirmation.
+The `Catalogue standard` column records the standard printed on the source document inspected for each
+entry. For the MCT 88 that document is `02D_FEM1001mt_MCT88_2006_40-21.pdf` (Potain ref.
+`02D_FEM1001mt_MCT88_2006_40-21`), which prints **FEM 1.001-A3** on all eight pages and does **not**
+print EN 14439 C25-D25. An external e-catalogue URL and a different MCT 88 edition reported by the PR
+reviewer (`02D_EN14439C25D25_MCT88_2009_36-14`, not inspected) both point to EN 14439 C25-D25; those are
+separate, unverified claims and are not evidence from the inspected PDF. FEM 1.001-A3 is not claimed to
+be the only or definitive standard for every MCT 88 edition. See `docs/SOURCES.md` §2 and §3.1.
 
 For both Potain cranes, 53.1 m is the overall tip length, not a working jib configuration. The
 published Potain working configurations are 20, 25, 30, 35, 40, 45, 50 and 52 m. The JASO chart values

@@ -195,10 +195,13 @@ length and 4.38 t as the variant-A counter-jib mass.
 
 4.5 Unresolved standard attribution
 
-The PDF prints FEM 1.001-A3. The catalogue `standard` field is EN 14439 C25,
-associated with the e-catalogue URL. The two attributions are not claimed to be
-equivalent and the question remains pending mentor confirmation. This document
-does not change the catalogue `standard` field.
+The inspected PDF (`02D_FEM1001mt_MCT88_2006_40-21.pdf`, Potain ref.
+`02D_FEM1001mt_MCT88_2006_40-21`) prints FEM 1.001-A3 on all 8 pages and does not
+print EN 14439 C25-D25. The catalogue `standard` field records the standard printed
+on that PDF. EN 14439 C25-D25 appears only as an unverified external claim (the
+e-catalogue URL and a reviewer-reported edition that has not been inspected); see
+`docs/SOURCES.md` section 3.1. Which standard to show users remains pending mentor
+confirmation.
 
 
 5. MCT 85 F5 SPOT CHECKS - SEPARATE FROM THE MCT 88 CHART

@@ -4,33 +4,33 @@
         {
             "id": "potain-mct-88",
             "name": "Potain MCT 88",
-            "standard": "EN 14439 C25",
+            "standard": "FEM 1.001-A3",
             "sources": {
                 "datasheetOverview": {
-                    "document": "Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Code 09-003-.5M-0610)",
+                    "document": "Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Ref. 02D_FEM1001mt_MCT88_2006_40-21)",
                     "page": 1,
                     "section": "MCT 88 overview - maximum capacity and tip loads by jib length",
                     "url": "https://www.manitowoc.com/potain-ecatalog-en14439-c25d25.html",
-                    "note": "Page 1 of the 8-page reference PDF (Potain-MCT-88_Reference.pdf, copyright 2026 Manitowoc; held outside this repository). Shows 5 t maximum capacity, 52 m maximum working jib, 53.1 m overall tip length, a 1.2 m x 1.2 m mast, and the p. 1 metric tip-load summary (20 m to 3.95 t through 52 m to 1.15 t). The p. 1 summary uses the 3 t table for the longer jib labels; the capacity chart and tip-load values in this entry come from the p. 4 5 t table recorded in datasheetLoadCharts. The 53.1 m dimension is not a working jib configuration."
+                    "note": "Page 1 of the 8-page PDF 02D_FEM1001mt_MCT88_2006_40-21.pdf (copyright 2026 Manitowoc; ignored by Git). The url field is an external e-catalogue link whose address contains en14439-c25d25; its page content could not be read, so it is not evidence for the standard, and the PDF prints FEM 1.001-A3 and does not print EN 14439 C25-D25. Shows 5 t maximum capacity, 52 m maximum working jib, 53.1 m overall tip length, a 1.2 m x 1.2 m mast, and the p. 1 metric tip-load summary (20 m to 3.95 t through 52 m to 1.15 t). The p. 1 summary uses the 3 t table for the longer jib labels; the capacity chart and tip-load values in this entry come from the p. 4 5 t table recorded in datasheetLoadCharts. The 53.1 m dimension is not a working jib configuration."
                 },
                 "datasheetLoadCharts": {
-                    "document": "Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Code 09-003-.5M-0610)",
+                    "document": "Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Ref. 02D_FEM1001mt_MCT88_2006_40-21)",
                     "page": 4,
                     "section": "Load curves - 5 t hook table",
                     "url": "https://cranenetwork.com/uploads/specs/5v6gyg3ds4sb0wjmpotain_mct_88_tower_crane_network.pdf",
                     "note": "PDF page 4 top table (5 t hook). Local source PDF: plugins/tower-planner/docs/02D_FEM1001mt_MCT88_2006_40-21.pdf (8 pages, ignored by Git). Per-radius load curves for jib lengths 20, 25, 30, 35, 40, 45, 50 and 52 m: 8 rows and 86 points. The printed minimum radius is 2.7 m; the first listed radius on each row is the end of the 5 t plateau, not the minimum radius. The bottom table on the same page is the 3 t hook table and is not used for this entry. The Cycle 2 mirrored copy recorded the load-curve page as p. 3; the local 8-page PDF places it on p. 4, which is the page used here. The dashed variant annotation on the page is not modelled."
                 },
                 "datasheetDimensions": {
-                    "document": "Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Code 09-003-.5M-0610)",
+                    "document": "Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Ref. 02D_FEM1001mt_MCT88_2006_40-21)",
                     "page": 6,
                     "section": "Dimensions and weight",
-                    "note": "Page 6 of the 8-page reference PDF (held outside this repository). Slewing crane part table: counter-jib L = 11.9 m for both variants A and B; mass 4380 kg (variant A) / 4250 kg (variant B); cab 1100 kg. The p. 1 drawing labels the counter-jib radius as 13.7 m (A) / 11.3 m (B), which is a different dimension; the catalogue uses the p. 6 structural length."
+                    "note": "Page 6 of the 8-page PDF 02D_FEM1001mt_MCT88_2006_40-21.pdf. Slewing crane part table: counter-jib L = 11.9 m for both variants A and B; mass 4380 kg (variant A) / 4250 kg (variant B); cab 1100 kg. The p. 1 drawing labels the counter-jib radius as 13.7 m (A) / 11.3 m (B), which is a different dimension; the catalogue uses the p. 6 structural length."
                 },
                 "datasheetMastReactions": {
-                    "document": "Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Code 09-003-.5M-0610)",
+                    "document": "Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Ref. 02D_FEM1001mt_MCT88_2006_40-21)",
                     "page": 2,
                     "section": "Mast - reactions / P12D",
-                    "note": "Page 2 of the 8-page reference PDF (held outside this repository). The P12D mast table gives a height under hook of 43.1 m but states no base width; the ZC 2030 table gives a height under hook of 41.5 m and a 3.8 m base width; the ZD 2030 table gives a height under hook of 41.5 m and a 4.5 m base width. The catalogue stores 3.8 m (ZC 2030) with the 43.1 m height from P12D; that P12D-height / ZC 2030-base-width combination is unresolved and requires mentor confirmation. The height under hook is not a freestanding-height limit; no freestanding height is stated in the inspected datasheet."
+                    "note": "Page 2 of the 8-page PDF 02D_FEM1001mt_MCT88_2006_40-21.pdf. The P12D mast table gives a height under hook of 43.1 m but states no base width; the ZC 2030 table gives a height under hook of 41.5 m and a 3.8 m base width; the ZD 2030 table gives a height under hook of 41.5 m and a 4.5 m base width. The catalogue stores 3.8 m (ZC 2030) with the 43.1 m height from P12D; that P12D-height / ZC 2030-base-width combination is unresolved and requires mentor confirmation. The height under hook is not a freestanding-height limit; no freestanding height is stated in the inspected datasheet."
                 }
             },
             "maxCapacityT": {
