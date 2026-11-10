@@ -389,11 +389,18 @@ describe("M3: Outrigger Footprint Polygon on Plan (Sujal)", () => {
         //   RR: (10 - 4, 20 - 3) = (6, 17) m = (6000, 17000) mm
         // Pad size = 1000 x 1000 mm => X spans [6000 - 500, 14000 + 500] = [5500, 14500] mm
         // Y spans [17000 - 500, 23000 + 500] = [16500, 23500] mm
-        // Z spans from 0 (ground pad bottom) up to boom tip (~35 m)
-        expect(bbox.min.x).toBeLessThanOrEqual(5500);
-        expect(bbox.max.x).toBeGreaterThanOrEqual(14500);
-        expect(bbox.min.y).toBeLessThanOrEqual(16500);
-        expect(bbox.max.y).toBeGreaterThanOrEqual(23500);
-        expect(bbox.min.z).toBeCloseTo(0, 0); // Resting flush on ground Z = 0
+        // Y spans exactly [16500, 23500] mm: only the outer pad edges reach it (chassis is 3 m wide,
+        // the boom is at slew 0 so it stays near y = 20000).
+        // X starts at the chassis rear end: 10000 - 7500 = 2500 mm (the chassis is wider than the pads).
+        // Z spans from 0 (ground pad bottom) up to the boom tip:
+        //   pivot height 2500 mm (chassis top) + 38000 * sin(60 deg) + 500 * cos(60 deg)
+        //   = 2500 + 32908.65 + 250 = 35658.65 mm.
+        //   (500 mm = boom radius; the rim of the flat end is the highest point.)
+        expect(bbox.min.x).toBeCloseTo(2500, 0);
+        expect(bbox.min.y).toBeCloseTo(16500, 0);
+        expect(bbox.max.y).toBeCloseTo(23500, 0);
+        expect(bbox.min.z).toBeCloseTo(0, 0); // pads rest flush on the ground
+        expect(bbox.max.z).toBeCloseTo(2500 + 38000 * Math.sin(Math.PI / 3) + 500 * Math.cos(Math.PI / 3), 0);
+        compoundShape.dispose();
     });
 });

@@ -8,7 +8,6 @@ import { KIT } from "./modules/craneModel";
 
 export * from "./body/mobileCraneBody";
 export * from "./clearance/distance";
-export type { ObstacleClearanceResult } from "./clearance/siteClearance";
 export * from "./clearance/siteClearance";
 export * from "./modules/craneModel";
 export * from "./modules/outriggers";
