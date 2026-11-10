@@ -484,63 +484,84 @@ export function checkOneClearance(
     };
 }
 
+/** Frees a CAD shape. Placeholder objects without `dispose` (used in some tests) are skipped. */
+function disposeShape(shape: unknown): void {
+    (shape as { dispose?: () => void } | null | undefined)?.dispose?.();
+}
+
 /**
- * Computes clearance between a crane boom and all site obstacles.
- *
- * Steps:
- *  1. Build the boom solid from `placement`.
- *  2. Extrude every building footprint into a solid.
- *  3. Build the power-line wall face (if given).
- *  4. Call checkOneClearance for each obstacle.
- *  5. Sort results (most severe first, then closest) and pick the worst case.
- *
- * Throws RangeError if the placement or any obstacle is invalid (checked before any kernel
- * call), and Error if an obstacle cannot be built or measured. There is no partial result.
- *
- * @param factory - ShapeFactory (WASM-backed, initialised via initWasm).
- * @param placement - Boom geometry and crane position.
- * @param buildings - Array of building footprints from the site model.
- * @param powerLine - Optional power-line obstacle.
- * @returns SiteClearanceReport.
+ * Obstacle solids that are built once and checked against many boom placements
+ * (a swing sweep checks the same obstacles at every slew angle).
+ * Call `dispose()` when done: the shapes live in the WASM heap and are not
+ * freed by the JavaScript garbage collector.
  */
-export function computeSiteClearance(
+export interface PreparedObstacles {
+    items: { solid: IShape; meta: { id: string; label: string; clearanceLimitM: number } }[];
+    dispose(): void;
+}
+
+/**
+ * Validates every obstacle first (so no kernel work is done for an invalid site), then
+ * builds the building solids and the power-line wall once.
+ * If building one of them fails, the ones already built are freed before the error is thrown.
+ */
+export function prepareObstacles(
     factory: IShapeFactory,
-    placement: BoomPlacement,
     buildings: ObstacleFootprint[],
     powerLine?: PowerLineObstacle,
-): SiteClearanceReport {
-    // Validate every obstacle first, so that no kernel work is done for an invalid site.
+): PreparedObstacles {
     for (const fp of buildings) validateObstacleFootprint(fp);
     if (powerLine) validatePowerLineObstacle(powerLine);
 
-    const boomSolid = buildBoomSolid(factory, placement);
-
-    const results: ObstacleClearanceResult[] = [];
-
-    // Check every building
-    for (const fp of buildings) {
-        const solid = buildBuildingSolid(factory, fp);
-        results.push(
-            checkOneClearance(
-                boomSolid,
-                solid,
-                { id: fp.id, label: fp.label, clearanceLimitM: fp.clearanceLimitM },
-                factory,
-            ),
-        );
+    const items: PreparedObstacles["items"] = [];
+    const prepared: PreparedObstacles = {
+        items,
+        dispose: () => {
+            for (const item of items.splice(0)) disposeShape(item.solid);
+        },
+    };
+    try {
+        for (const fp of buildings) {
+            items.push({
+                solid: buildBuildingSolid(factory, fp),
+                meta: { id: fp.id, label: fp.label, clearanceLimitM: fp.clearanceLimitM },
+            });
+        }
+        if (powerLine) {
+            items.push({
+                solid: buildPowerLineWall(factory, powerLine),
+                meta: {
+                    id: powerLine.id,
+                    label: powerLine.label,
+                    clearanceLimitM: powerLine.clearanceLimitM,
+                },
+            });
+        }
+    } catch (error) {
+        prepared.dispose();
+        throw error;
     }
+    return prepared;
+}
 
-    // Check power line (optional)
-    if (powerLine) {
-        const wall = buildPowerLineWall(factory, powerLine);
-        results.push(
-            checkOneClearance(
-                boomSolid,
-                wall,
-                { id: powerLine.id, label: powerLine.label, clearanceLimitM: powerLine.clearanceLimitM },
-                factory,
-            ),
-        );
+/**
+ * Checks one boom placement against obstacles that were built by `prepareObstacles`.
+ * Builds the boom solid, and frees it again before returning (also when a check throws).
+ * The obstacles are not freed here.
+ */
+export function checkPreparedObstacles(
+    factory: IShapeFactory,
+    placement: BoomPlacement,
+    obstacles: PreparedObstacles,
+): SiteClearanceReport {
+    const boomSolid = buildBoomSolid(factory, placement);
+    const results: ObstacleClearanceResult[] = [];
+    try {
+        for (const item of obstacles.items) {
+            results.push(checkOneClearance(boomSolid, item.solid, item.meta, factory));
+        }
+    } finally {
+        disposeShape(boomSolid);
     }
 
     // Sort: CRITICAL first, then WARNING, then SAFE; within same status, sort by distance ascending.
@@ -560,4 +581,43 @@ export function computeSiteClearance(
         anyCollision,
         disclaimer: "Planning aid, not a certified lift plan.",
     };
+}
+
+/**
+ * Computes clearance between a crane boom and all site obstacles.
+ *
+ * Steps:
+ *  1. Validate every obstacle and the boom (before any kernel call).
+ *  2. Extrude every building footprint into a solid and build the power-line wall (if given).
+ *  3. Build the boom solid from `placement`.
+ *  4. Call checkOneClearance for each obstacle.
+ *  5. Sort results (most severe first, then closest) and pick the worst case.
+ *  6. Free the solids that were built.
+ *
+ * Throws RangeError if the placement or any obstacle is invalid (checked before any kernel
+ * call), and Error if an obstacle cannot be built or measured. There is no partial result.
+ *
+ * @param factory - ShapeFactory (WASM-backed, initialised via initWasm).
+ * @param placement - Boom geometry and crane position.
+ * @param buildings - Array of building footprints from the site model.
+ * @param powerLine - Optional power-line obstacle.
+ * @returns SiteClearanceReport.
+ */
+export function computeSiteClearance(
+    factory: IShapeFactory,
+    placement: BoomPlacement,
+    buildings: ObstacleFootprint[],
+    powerLine?: PowerLineObstacle,
+): SiteClearanceReport {
+    // Validate every obstacle first, then the boom, so that no kernel work is done for invalid input.
+    for (const fp of buildings) validateObstacleFootprint(fp);
+    if (powerLine) validatePowerLineObstacle(powerLine);
+    validateBoomPlacement(placement);
+
+    const obstacles = prepareObstacles(factory, buildings, powerLine);
+    try {
+        return checkPreparedObstacles(factory, placement, obstacles);
+    } finally {
+        obstacles.dispose();
+    }
 }

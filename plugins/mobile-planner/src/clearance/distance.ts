@@ -95,9 +95,14 @@ export function computeClearanceDistance(
     let penetrates: boolean;
     try {
         const commonResult = factory.booleanCommon([shapeA], [shapeB]);
-        penetrates =
-            !commonResult.isOk ||
-            (!commonResult.value.isNull() && commonResult.value.volume() > MIN_OVERLAP_MM3);
+        try {
+            penetrates =
+                !commonResult.isOk ||
+                (!commonResult.value.isNull() && commonResult.value.volume() > MIN_OVERLAP_MM3);
+        } finally {
+            // The intersection solid is a WASM object: free it, only the volume was needed.
+            if (commonResult.isOk) commonResult.value.dispose?.();
+        }
     } catch {
         penetrates = true;
     }
