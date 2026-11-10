@@ -1,7 +1,14 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { command, type I18nKeys, type IApplication, type ICommand, PubSub, CancelableCommand } from "@chili3d/core";
+import {
+    CancelableCommand,
+    command,
+    type I18nKeys,
+    type IApplication,
+    type ICommand,
+    PubSub,
+} from "@chili3d/core";
 import { TowerCraneBodyNode } from "../body/towerCraneBody";
 import { MCT88 } from "../catalogue";
 
@@ -27,7 +34,7 @@ export class CreateTowerCraneCommand extends CancelableCommand implements IComma
 
         // Add to document
         doc.modelManager.addNode(craneBody);
-        
+
         // Select it so it's visible in property panel
         doc.selection.setSelectedNodes([craneBody], false);
 
