@@ -121,3 +121,24 @@ record and the traceable page-17 transcription.
   - Matches hand moment balance $\sum F_z = W$, $\sum M_x = W \cdot e_y$, $\sum M_y = W \cdot e_x$.
 - **Stability:** A negative reaction flags pad uplift (tipping condition).
 
+
+
+## M4 Ground Bearing vs User Allowable & Stability Verdict
+
+- **Ground bearing pressure:** $p = R / A$ where $R$ = pad reaction (t) and $A$ = pad area (m²). Converted to kPa via standard gravity $g = 9.80665$ kN/t.
+- **PASS/FAIL verdict:** If the user supplies an allowable soil bearing capacity $q_\text{allow}$ (t/m²), every pad is checked: $p \leq q_\text{allow}$ → PASS, $p > q_\text{allow}$ → FAIL. If no allowable is given, status is NOT_CHECKED.
+- **Tipping detection:** If any pad reaction $R_i < 0$, the verdict is FAIL with an explicit "tipping" keyword, regardless of bearing capacity. This satisfies the backlog requirement: *"a case where one pad reaction goes negative returns 'tipping'"*.
+- **UI Panel:** `createGroundBearingPanel()` provides a vanilla DOM panel with live inputs for pad area and allowable capacity. Inputs default to empty (requiring explicit site inputs, labeled `INDICATIVE` on screen to avoid unsourced assumptions) and display `NOT_CHECKED` until valid inputs are provided; clearing fields immediately reverts to `NOT_CHECKED`. Features a 4-pad grid with per-pad status badges, a reactive verdict banner, and the mandatory planning disclaimer.
+- **Sources:** All formulas are standard statics (no invented soil values). User-entered allowable is a parameter, not a hardcoded number. See [SOURCES.md](SOURCES.md).
+## M6 Boom Clearance to Site Obstacles
+
+- **3D Solids:** Crane boom is modelled as an extruded cylinder from pivot `(x, y, z)` with user-supplied radius $R$, length $L$, slew angle $\theta$, and elevation $\alpha$. Site buildings are extruded from 2D polygons into 3D prisms (`buildBuildingSolid`).
+- **Power Line Hazard:** Modelled as a conservative vertical face at the power line's `x_m` (sample site: $x = -9.0\,\text{m}$), spanning $\pm 200\,\text{m}$ in $Y$ and $0\text{--}200\,\text{m}$ in $Z$ (`buildPowerLineWall`). The real wire height is not in the site data, so the wall is taller than the wire. A boom that crosses the wall is reported `CRITICAL` with `isTouching = true` and `isCollision = false`.
+- **Clearance Query:** Evaluates Euclidean distance via OpenCASCADE `extremaDistance` and `booleanCommon`.
+- **Status Classification:**
+  - `SAFE`: $\text{distance} \ge \text{clearanceLimitM}$ (shown green)
+  - `WARNING`: $0 < \text{distance} < \text{clearanceLimitM}$ (shown red per BACKLOG rule)
+  - `CRITICAL`: Collision or touching ($\text{distance} = 0$, shown red)
+- **Verified Acceptance Test:** Boom $20\,\text{m}$, elevation $30^\circ$, slew $0^\circ$ from $(5, 31, 0)\,\text{m}$ gives $2.43\,\text{m}$ ($\pm 0.1\,\text{m}$) clearance to Tower A west face ($x = 25\,\text{m}$), verified by exact hand calculation.
+- **Fail-safe:** Empty site returns `worstCase = null`, preventing false `SAFE` indication. Input validation (`validateBoomPlacement`, `validateObstacleFootprint`, `validatePowerLineObstacle`) rejects invalid boom, building height, polygon, power-line position and clearance limit before the kernel runs, so bad data cannot produce a false `SAFE`.
+

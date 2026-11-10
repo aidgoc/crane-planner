@@ -39,4 +39,32 @@ const TowerPlannerPlugin: Plugin = {
     i18nResources: [en],
 };
 
+export type {
+    CraneSimulationState,
+    HoistState,
+    MotionCommand,
+    MotionControllerConfig,
+    SimulationState,
+    SimulationStatus,
+    SlewState,
+    TrolleyState,
+    UpdateResult,
+    VelocityLimits,
+} from "./simulation";
+export {
+    clamp,
+    createDefaultCraneSimulationState,
+    createHoistState,
+    createSlewState,
+    createTrolleyState,
+    DEFAULT_MOTION_CONTROLLER_CONFIG,
+    DEFAULT_VELOCITY_LIMITS,
+    MotionController,
+    normalizeAngleDeg,
+    updateHoist,
+    updateSlew,
+    updateTrolley,
+    validateVelocityLimits,
+} from "./simulation";
+
 export default TowerPlannerPlugin;

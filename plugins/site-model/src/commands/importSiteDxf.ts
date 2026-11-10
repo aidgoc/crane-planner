@@ -42,6 +42,12 @@ export class ImportSiteDxfCommand implements ICommand {
         }
 
         const file = files.value[0];
+
+        if (!file) {
+            // The picker returned successfully but no file was selected.
+            return;
+        }
+
         const project = loadSiteProjectFromDxf(file.data);
         if (!project.isOk) {
             // Never overwrite an existing valid site with data that failed to parse.

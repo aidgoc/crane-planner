@@ -51,6 +51,18 @@ function cancelPicker() {
         input.dispatchEvent(new Event("cancel"));
     };
 }
+function emptyPicker() {
+    return () => {
+        const input = document.querySelector("input[type=file]") as HTMLInputElement;
+        if (!input) throw new Error("the command did not open a file picker");
+
+        Object.defineProperty(input, "files", {
+            value: [],
+            configurable: true,
+        });
+        input.dispatchEvent(new Event("change"));
+    };
+}
 
 function createApplication() {
     const view = createMockView();
@@ -140,6 +152,30 @@ test("a cancelled picker leaves the selection untouched and shows no toast", asy
 
     expect(toasts).toHaveLength(0);
     expect(readSiteSource(document).value?.name).toBe("existing.dxf");
+});
+test("an empty successful picker leaves the selection untouched and shows no toast", async () => {
+    const { application, document } = createApplication();
+
+    const seeded = writeSiteSource(document, {
+        kind: "dxfText",
+        name: "existing.dxf",
+        dxfText: sampleDxf,
+    });
+    expect(seeded.isOk).toBe(true);
+
+    const toasts = captureToasts();
+    const drive = emptyPicker();
+
+    const executing = new ImportSiteDxfCommand().execute(application);
+    drive();
+    await executing;
+
+    expect(toasts).toHaveLength(0);
+
+    const source = readSiteSource(document);
+    expect(source.isOk).toBe(true);
+    expect(source.value?.name).toBe("existing.dxf");
+    expect(source.value?.dxfText).toBe(sampleDxf);
 });
 
 test("with no active document the import shows the no-document toast and opens no picker", async () => {
