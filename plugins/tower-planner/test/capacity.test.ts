@@ -44,18 +44,27 @@ const SYNTHETIC_MINI: CapacityModel = {
 };
 
 describe("tipLoadAt", () => {
-    test("returns the published 30 m tip load", () => {
-        expect(tipLoadAt(MCT88, 30)).toBeCloseTo(2.7, 10);
+    test.each([
+        { jibM: 20, tipT: 3.95 },
+        { jibM: 25, tipT: 3.0 },
+        { jibM: 30, tipT: 2.5 },
+        { jibM: 35, tipT: 2.22 },
+        { jibM: 40, tipT: 1.9 },
+        { jibM: 45, tipT: 1.65 },
+        { jibM: 50, tipT: 1.4 },
+        { jibM: 52, tipT: 1.1 },
+    ])("returns the revised $jibM m tip load", ({ jibM, tipT }) => {
+        expect(tipLoadAt(MCT88, jibM)).toBeCloseTo(tipT, 10);
     });
 
     test("interpolates linearly between published jib rows", () => {
-        // Between 30 m (2.70 t) and 35 m (2.27 t): 2.70 + 0.5 × (2.27 - 2.70) = 2.485 t.
-        expect(tipLoadAt(MCT88, 32.5)).toBeCloseTo(2.485, 10);
+        // Between 30 m (2.50 t) and 35 m (2.22 t): 2.50 + 0.5 × (2.22 - 2.50) = 2.36 t.
+        expect(tipLoadAt(MCT88, 32.5)).toBeCloseTo(2.36, 10);
     });
 
     test("clamps below the first and above the last published row", () => {
         expect(tipLoadAt(MCT88, 10)).toBeCloseTo(3.95, 10);
-        expect(tipLoadAt(MCT88, 60)).toBeCloseTo(1.15, 10);
+        expect(tipLoadAt(MCT88, 60)).toBeCloseTo(1.1, 10);
     });
 
     test("rejects a non-finite jib length", () => {
@@ -64,31 +73,53 @@ describe("tipLoadAt", () => {
 });
 
 describe("momentAt and cornerRadiusAt", () => {
+    test("matches the hand calculation for the 20 m jib", () => {
+        // M = 3.95 t × 20 m = 79 t·m.
+        expect(momentAt(MCT88, 20)).toBeCloseTo(79, 8);
+        // corner = 79 / 5 = 15.8 m. These helpers are not the MCT 88 runtime
+        // capacity model; capacityAt reads the published chart instead.
+        expect(cornerRadiusAt(MCT88, 20)).toBeCloseTo(15.8, 8);
+    });
+
     test("matches the hand calculation for the 30 m jib", () => {
-        // M = 2.70 t × 30 m = 81 t·m.
-        expect(momentAt(MCT88, 30)).toBeCloseTo(81, 8);
-        // corner = 81 / 5 = 16.2 m.
-        expect(cornerRadiusAt(MCT88, 30)).toBeCloseTo(16.2, 8);
+        // M = 2.50 t × 30 m = 75 t·m.
+        expect(momentAt(MCT88, 30)).toBeCloseTo(75, 8);
+        // corner = 75 / 5 = 15.0 m.
+        expect(cornerRadiusAt(MCT88, 30)).toBeCloseTo(15, 8);
     });
 });
 
 describe("capacityAt", () => {
-    test("returns the flat maximum capacity inside the corner radius", () => {
-        // 5 m and the corner itself are both on the flat 5 t part of the curve.
+    test("returns the 5 t plateau from the printed 2.7 m minimum radius", () => {
+        // The printed minimum radius is 2.7 m; the 5 t plateau extends from
+        // there to the first listed radius (16.3 m on the 30 m jib).
+        expect(capacityAt(MCT88, 30, 2.7)).toBeCloseTo(5, 10);
         expect(capacityAt(MCT88, 30, 5)).toBeCloseTo(5, 10);
-        expect(capacityAt(MCT88, 30, 16.2)).toBeCloseTo(5, 10);
+        expect(capacityAt(MCT88, 30, 16.3)).toBeCloseTo(5, 10);
     });
 
-    test("returns null for zero or negative radius on a tip-load model", () => {
+    test("returns null for zero or negative radius", () => {
         expect(capacityAt(MCT88, 30, 0)).toBeNull();
         expect(capacityAt(MCT88, 30, -1)).toBeNull();
     });
 
-    test("uses the two-piece curve beyond the corner", () => {
-        // Hand checks: 81 / 20 = 4.05 t; 81 / 25 = 3.24 t; 81 / 30 = 2.70 t.
-        expect(capacityAt(MCT88, 30, 20)).toBeCloseTo(4.05, 10);
-        expect(capacityAt(MCT88, 30, 25)).toBeCloseTo(3.24, 10);
-        expect(capacityAt(MCT88, 30, 30)).toBeCloseTo(2.7, 10);
+    test.each([
+        // The 20 m jib's final point is 3.95 t; 3.90 t is the 25 m jib at 20 m.
+        { jibM: 20, radiusM: 20, capacityT: 3.95 },
+        { jibM: 25, radiusM: 25, capacityT: 3.0 },
+        { jibM: 30, radiusM: 20, capacityT: 3.9 },
+        { jibM: 30, radiusM: 22, capacityT: 3.5 },
+        { jibM: 30, radiusM: 25, capacityT: 3.0 },
+        { jibM: 30, radiusM: 27, capacityT: 2.75 },
+        { jibM: 30, radiusM: 28, capacityT: 2.5 },
+        { jibM: 30, radiusM: 29, capacityT: 2.5 },
+        { jibM: 30, radiusM: 30, capacityT: 2.5 },
+        { jibM: 52, radiusM: 52, capacityT: 1.1 },
+    ])("returns $capacityT t at $radiusM m on the $jibM m jib", ({ jibM, radiusM, capacityT }) => {
+        // The p. 4 5 t table is the capacity source. The 28 m case sits between
+        // the printed 27 m and 29 m points, so the conservative step lookup
+        // returns the value at 29 m.
+        expect(capacityAt(MCT88, jibM, radiusM)).toBeCloseTo(capacityT, 10);
     });
 
     test("returns null beyond the installed jib", () => {
@@ -105,10 +136,10 @@ describe("capacityAt", () => {
     });
 
     test("returns null above each model's own published maximum jib", () => {
-        // MCT 88: 52 m working jib (53.1 m is the overall tip length). At the
-        // 52 m boundary: 1.15 t × 52 m = 59.8 t·m; 59.8 / 52 = 1.15 t.
-        expect(capacityAt(MCT88, 52, 52)).toBeCloseTo(1.15, 10);
-        expect(capacityAt(MCT88, 52, 52, 20)).toBeCloseTo(0.92, 10);
+        // MCT 88: 52 m working jib (53.1 m is the overall tip length). The p. 4
+        // 5 t table prints 1.10 t at the 52 m endpoint; 1.10 × 0.8 = 0.88 t.
+        expect(capacityAt(MCT88, 52, 52)).toBeCloseTo(1.1, 10);
+        expect(capacityAt(MCT88, 52, 52, 20)).toBeCloseTo(0.88, 10);
         // Zero radius is invalid even at the maximum jib.
         expect(capacityAt(MCT88, 52, 0)).toBeNull();
         expect(capacityAt(MCT88, 52.000001, 30)).toBeNull();
@@ -132,21 +163,26 @@ describe("capacityAt", () => {
     });
 
     test("applies the SIMULATED wind derate only at or above 20 km/h", () => {
-        // 81 / 30 = 2.70 t; 2.70 × 0.8 = 2.16 t.
-        expect(capacityAt(MCT88, 30, 30, 19.9)).toBeCloseTo(2.7, 10);
-        expect(capacityAt(MCT88, 30, 30, 20)).toBeCloseTo(2.16, 10);
-        expect(capacityAt(MCT88, 30, 30, 25)).toBeCloseTo(2.16, 10);
-        expect(capacityAt(MCT88, 30, 30, 0)).toBeCloseTo(2.7, 10);
-        expect(capacityAt(MCT88, 30, 30)).toBeCloseTo(2.7, 10);
-        expect(capacityAt(MCT88, 30, 30, null)).toBeCloseTo(2.7, 10);
+        // 30 m jib at 30 m radius: 2.50 t × 0.8 = 2.00 t.
+        expect(capacityAt(MCT88, 30, 30, 19.9)).toBeCloseTo(2.5, 10);
+        expect(capacityAt(MCT88, 30, 30, 20)).toBeCloseTo(2.0, 10);
+        expect(capacityAt(MCT88, 30, 30, 25)).toBeCloseTo(2.0, 10);
+        expect(capacityAt(MCT88, 30, 30, 0)).toBeCloseTo(2.5, 10);
+        expect(capacityAt(MCT88, 30, 30)).toBeCloseTo(2.5, 10);
+        expect(capacityAt(MCT88, 30, 30, null)).toBeCloseTo(2.5, 10);
         expect(capacityAt(MCT88, 30, 30.1, 20)).toBeNull();
+
+        // 30 m jib at 20 m radius: 3.90 t × 0.8 = 3.12 t.
+        expect(capacityAt(MCT88, 30, 20, 20)).toBeCloseTo(3.12, 10);
+        // 52 m jib at 52 m radius: 1.10 t × 0.8 = 0.88 t.
+        expect(capacityAt(MCT88, 52, 52, 20)).toBeCloseTo(0.88, 10);
     });
 
     test("applies the wind factor exactly once", () => {
-        // 2.70 t × 0.8 = 2.16 t. A second application would give 1.728 t.
-        expect(capacityAt(MCT88, 30, 30, 20)).toBeCloseTo(2.16, 10);
-        expect(capacityAt(MCT88, 30, 30, 100)).toBeCloseTo(2.16, 10);
-        expect(capacityAt(MCT88, 30, 30, 100)).not.toBeCloseTo(2.7 * 0.8 * 0.8, 10);
+        // 2.50 t × 0.8 = 2.00 t. A second application would give 1.60 t.
+        expect(capacityAt(MCT88, 30, 30, 20)).toBeCloseTo(2.0, 10);
+        expect(capacityAt(MCT88, 30, 30, 100)).toBeCloseTo(2.0, 10);
+        expect(capacityAt(MCT88, 30, 30, 100)).not.toBeCloseTo(2.5 * 0.8 * 0.8, 10);
     });
 
     test.each([
@@ -162,6 +198,74 @@ describe("capacityAt", () => {
         expect(WIND_DERATE_RULE.provenance).toBe("SIMULATED");
         expect(WIND_DERATE_RULE.thresholdKmh).toBe(20);
         expect(WIND_DERATE_RULE.factor).toBe(0.8);
+    });
+});
+
+describe("MCT 88 published load chart", () => {
+    // Source: Potain MCT 88 Data Sheet, PDF p. 4 top table (5 t hook): 8 jib
+    // rows and 86 points. These are printed chart labels, not values from the
+    // old 81/r moment formula. capacityAt uses this chart for MCT 88.
+    test("uses the next larger published radius between chart points", () => {
+        // 26 m lies between 25 m (3.0 t) and 27 m (2.75 t). Linear interpolation
+        // would give 2.875 t; the conservative step lookup returns 2.75 t.
+        expect(capacityAt(MCT88, 30, 26)).toBeCloseTo(2.75, 10);
+        // 28 m lies between 27 m (2.75 t) and 29 m (2.5 t) -> 2.5 t.
+        expect(capacityAt(MCT88, 30, 28)).toBeCloseTo(2.5, 10);
+        // 28.43 m is still between those same two printed radii -> 2.5 t.
+        expect(capacityAt(MCT88, 30, 28.43)).toBeCloseTo(2.5, 10);
+        // 31 m lies between 29.1 m and 31.6 m, both printed as 2.5 t -> 2.5 t.
+        expect(capacityAt(MCT88, 35, 31)).toBeCloseTo(2.5, 10);
+        // 31.7 m lies between 31.6 m (2.5 t) and 32 m (2.45 t) -> 2.45 t.
+        expect(capacityAt(MCT88, 35, 31.7)).toBeCloseTo(2.45, 10);
+    });
+
+    test("returns exactly the capacity at every published chart point", () => {
+        const chart = MCT88.loadChart;
+        expect(chart).toBeDefined();
+        if (chart === undefined) throw new Error("MCT 88 load chart is missing.");
+        expect(chart).toHaveLength(8);
+        expect(chart.reduce((total, row) => total + row.points.length, 0)).toBe(86);
+
+        for (const row of chart) {
+            for (const point of row.points) {
+                expect(capacityAt(MCT88, row.jibM.value, point.radiusM.value)).toBeCloseTo(
+                    point.capacityT.value,
+                    10,
+                );
+            }
+        }
+    });
+
+    test("does not extrapolate beyond the last published radius", () => {
+        expect(capacityAt(MCT88, 30, 30)).toBeCloseTo(2.5, 10);
+        expect(capacityAt(MCT88, 30, 30.1)).toBeNull();
+        expect(capacityAt(MCT88, 20, 20.1)).toBeNull();
+        expect(capacityAt(MCT88, 35, 35.1)).toBeNull();
+        expect(capacityAt(MCT88, 52, 52.1)).toBeNull();
+    });
+
+    test("does not invent a chart for an unpublished jib length", () => {
+        // 32.5 m lies between the published 30 m and 35 m configurations, but
+        // no chart is published for it; 53.1 m is the overall tip length, not a
+        // working jib configuration.
+        expect(MCT88.loadChart?.some((row) => row.jibM.value === 32.5)).toBe(false);
+        expect(capacityAt(MCT88, 32.5, 20)).toBeNull();
+        expect(capacityAt(MCT88, 32.5, 26)).toBeNull();
+        expect(capacityAt(MCT88, 53.1, 20)).toBeNull();
+    });
+
+    test("uses the MCT 88 25 m chart endpoint of 3.00 t", () => {
+        // p. 4 prints 3.00 t at 25 m on the 25 m jib; the MCT 85 F5 chart
+        // prints 3.02 t at the same point. The chart is the capacity source.
+        expect(tipLoadAt(MCT88, 25)).toBeCloseTo(3.0, 10);
+        expect(capacityAt(MCT88, 25, 25)).toBeCloseTo(3.0, 10);
+        expect(capacityAt(MCT88, 25, 25)).not.toBeCloseTo(3.02, 10);
+    });
+
+    test("uses the 52 m chart endpoint for the maximum working jib", () => {
+        // p. 4: 13.7 m to 5 t, 52 m to 1.10 t.
+        expect(capacityAt(MCT88, 52, 52)).toBeCloseTo(1.1, 10);
+        expect(capacityAt(MCT88, 52, 13.7)).toBeCloseTo(5, 10);
     });
 });
 
@@ -279,11 +383,17 @@ describe("MCT 85 F5 published load chart", () => {
 });
 
 describe("Cycle 2 imperial chart comparison", () => {
-    // The reference values are the converted 98 ft-row readings documented in
-    // docs/SOURCES.md §3: 4.3 USt -> 3.90 t, 3.3 USt -> 2.99 t, 2.8 USt -> 2.54 t.
-    // The computed values come from the real capacityAt function, not a fixture.
+    // Historical Cycle 2 sanity check: the reference values are the converted
+    // imperial readings (4.3 USt -> 3.90 t, 3.3 USt -> 2.99 t, 2.8 USt -> 2.54 t),
+    // retained only to confirm the published-chart lookup stays within ±10 % of
+    // the old comparison. They are not capacity-model inputs or a current
+    // source-document table; the computed values come from the real capacityAt
+    // function, not a fixture.
+    // The 20.0 m case uses the printed 20 m chart point; just above it the
+    // conservative step lookup moves to the 22 m point (3.5 t), which is a
+    // deliberate understatement rather than a like-for-like chart comparison.
     test.each([
-        { radiusM: 20.1, referenceT: 3.9 },
+        { radiusM: 20.0, referenceT: 3.9 },
         { radiusM: 25.0, referenceT: 2.99 },
         { radiusM: 29.9, referenceT: 2.54 },
     ])("stays within ±10 % of the converted chart at $radiusM m", ({ radiusM, referenceT }) => {

@@ -64,8 +64,13 @@ describe("tower-planner plugin wiring", () => {
         // 52 m is the maximum working jib; 53.1 m is the overall tip length.
         expect(MCT88.maxJibLengthM.value).toBe(52);
         expect(MCT88.tipLoadByJib.at(-1)?.jibM.value).toBe(52);
-        expect(MCT88.tipLoadByJib.at(-1)?.tipT.value).toBe(1.15);
-        expect(MCT88.tipLoadByJib[2].tipT.value).toBe(2.7);
+        expect(MCT88.tipLoadByJib.at(-1)?.tipT.value).toBe(1.1);
+        expect(MCT88.tipLoadByJib[2].tipT.value).toBe(2.5);
+        // The capacity model uses the p. 4 5 t hook chart: 8 jib rows and 86
+        // published points, not the old 81/r moment formula.
+        expect(MCT88.loadChart).toHaveLength(8);
+        expect(MCT88.loadChart?.reduce((total, row) => total + row.points.length, 0)).toBe(86);
+        expect(MCT88.sources.datasheetLoadCharts.page).toBe(4);
         expect(MCT88.dimensions.mastWidthM.value).toBe(1.2);
         expect(MCT88.dimensions.mastWidthM.provenance).toEqual({
             kind: "source",
@@ -145,16 +150,17 @@ describe("tower-planner plugin wiring", () => {
 });
 
 describe("craneDialogNotes", () => {
-    test("describes the MCT 88 tip-load model and its project default", () => {
+    test("describes the MCT 88 chart model and its project default", () => {
         const notes = craneDialogNotes(MCT88);
 
         expect(notes.sourceDocument).toContain("Potain MCT 88 Data Sheet");
         expect(notes.sourcePage).toBe(1);
         expect(notes.defaultJibKind).toBe("indicative");
         expect(notes.defaultJibDetail).toContain("30 m");
-        expect(notes.capacityMethod).toBe("tip-load");
+        expect(notes.capacityMethod).toBe("chart");
         expect(notes.capacitySourceDocument).toContain("Potain MCT 88 Data Sheet");
-        expect(notes.capacitySourcePage).toBe(1);
+        // The overview is p. 1; the capacity chart is the separate p. 4 table.
+        expect(notes.capacitySourcePage).toBe(4);
     });
 
     test("describes the MCT 85 F5 chart model and its project default", () => {
@@ -220,10 +226,14 @@ describe("validation evidence", () => {
         expect(document).toContain("NOT THE ORIGINAL");
         expect(document).toContain("MCT 88");
         expect(document).toContain("MCT 85 F5");
-        expect(document).toContain("2.70 t");
-        expect(document).toContain("2.54 t");
+        expect(document).toContain("upper 5 t hook table");
+        expect(document).toContain("8 jib rows");
+        expect(document).toContain("86 published points");
+        expect(document).toContain("3.95 t");
+        expect(document).toContain("2.15 t");
         expect(document).toContain("2.7 m");
-        expect(document).toContain("0.907185 t");
+        expect(document).toContain("No interpolation");
+        expect(document).toContain("SIMULATED");
     });
 });
 
@@ -396,19 +406,19 @@ describe("TowerPickCheckCommand", () => {
                 ),
             ).toEqual(["drop", "supply", "supply", "supply", "drop"]);
 
-            // MCT 88 with the 52 m jib: moment = 1.15 t × 52 m = 59.8 t·m.
-            // capacity = 59.8 / governing radius (or none beyond 52 m):
-            //   P1 59.8 / 28.43 = 2.10 t; 2.0 t PASS
-            //   P2 59.8 / 39.20 = 1.53 t; 1.5 t PASS
-            //   P3 59.8 / 47.20 = 1.27 t; 2.6 t FAIL
-            //   P4 59.8 / 14.21 = 4.21 t; 4.2 t PASS
+            // MCT 88 with the 52 m jib uses the p. 4 5 t chart and the next
+            // larger listed radius:
+            //   P1 28.43 m -> 30 m point -> 2.15 t; 2.0 t PASS
+            //   P2 39.20 m -> 40 m point -> 1.55 t; 1.5 t PASS
+            //   P3 47.20 m -> 50 m point -> 1.15 t; 2.6 t FAIL
+            //   P4 14.21 m -> 15 m point -> 4.50 t; 4.2 t PASS
             //   P5 54.56 m > 52 m -> OUT_OF_RANGE
             expect(statuses(content)).toEqual(["PASS", "PASS", "FAIL", "PASS", "OUT_OF_RANGE"]);
             expect(rows.map((row) => cellText(row, "capacity"))).toEqual([
-                "2.10 t",
-                "1.53 t",
-                "1.27 t",
-                "4.21 t",
+                "2.15 t",
+                "1.55 t",
+                "1.15 t",
+                "4.50 t",
                 "-",
             ]);
         } finally {
@@ -643,8 +653,8 @@ describe("TowerPickCheckCommand", () => {
             expect(jibCell.getAttribute("data-jib-provenance")).toBe("indicative");
             expect(jibCell.textContent).toBe("30 m (INDICATIVE)");
             expect(matrixCell(mct88, "P1").getAttribute("data-matrix-status")).toBe("PASS");
-            expect(matrixCell(mct88, "P1").getAttribute("data-matrix-capacity")).toBe("2.85");
-            expect(matrixCell(mct88, "P1").getAttribute("data-matrix-utilisation")).toBe("70.2");
+            expect(matrixCell(mct88, "P1").getAttribute("data-matrix-capacity")).toBe("2.50");
+            expect(matrixCell(mct88, "P1").getAttribute("data-matrix-utilisation")).toBe("80.0");
             expect(matrixCell(mct88, "P1").getAttribute("data-matrix-radius")).toBe("28.43");
             expect(matrixCell(mct88, "P1").getAttribute("data-matrix-governing")).toBe("drop");
 
@@ -702,13 +712,14 @@ describe("TowerPickCheckCommand", () => {
         enterMastAndJib(content, "44", "17", "30");
 
         let rows = matrixRows(content);
-        expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-utilisation")).toBe("70.2");
+        expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-utilisation")).toBe("80.0");
 
-        // P1 load 2.0 -> 4.0 t: MCT 88 4.0 / 2.85 = 140.4 %, MCT 85 4.0 / 2.50 = 160.0 %.
+        // P1 load 2.0 -> 4.0 t: both 30 m charts give 2.50 t, so both show
+        // 4.0 / 2.50 = 160.0 %.
         setRowInput(tableRows(content)[0], "load", "4");
         rows = matrixRows(content);
         expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-status")).toBe("FAIL");
-        expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-utilisation")).toBe("140.4");
+        expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-utilisation")).toBe("160.0");
         expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-reason")).toBe("over-capacity");
         expect(matrixCell(rows[1], "P1").getAttribute("data-matrix-utilisation")).toBe("160.0");
         expect(matrixState(content)).toBe("no-crane-passes");
@@ -745,15 +756,14 @@ describe("TowerPickCheckCommand", () => {
         expect(matrixOverall(rows[0]).getAttribute("data-matrix-all-pass")).toBe("false");
     });
 
-    test("marks a crane as passing every pick only when all five picks pass", async () => {
+    test("reports no crane passing when every pick exceeds both 30 m charts", async () => {
         const restore = installEnglishLocale();
         try {
             const { content } = await openPickDialog();
             enterMastAndJib(content, "0", "0", "30");
 
             // Make each sample pick a 2.6 t lift at a 30 m radius from mast (0, 0).
-            // MCT 88 at 30 m: 81 / 30 = 2.70 t -> 2.6 / 2.70 = 96.3 % PASS.
-            // MCT 85 F5 at 30 m: 2.50 t -> 2.6 / 2.50 = 104.0 % FAIL.
+            // Both 30 m charts print 2.50 t -> 2.6 / 2.50 = 104.0 % FAIL.
             for (const pickRow of tableRows(content)) {
                 setRowInput(pickRow, "load", "2.6");
                 setRowInput(pickRow, "supply-x", "30");
@@ -762,13 +772,13 @@ describe("TowerPickCheckCommand", () => {
                 setRowInput(pickRow, "drop-y", "0");
             }
 
-            expect(matrixState(content)).toBe("cranes-pass");
+            expect(matrixState(content)).toBe("no-crane-passes");
 
             const rows = matrixRows(content);
-            expect(matrixOverall(rows[0]).getAttribute("data-matrix-all-pass")).toBe("true");
-            expect(matrixOverall(rows[0]).getAttribute("data-matrix-passing")).toBe("5");
-            expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-capacity")).toBe("2.70");
-            expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-utilisation")).toBe("96.3");
+            expect(matrixOverall(rows[0]).getAttribute("data-matrix-all-pass")).toBe("false");
+            expect(matrixOverall(rows[0]).getAttribute("data-matrix-passing")).toBe("0");
+            expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-capacity")).toBe("2.50");
+            expect(matrixCell(rows[0], "P1").getAttribute("data-matrix-utilisation")).toBe("104.0");
 
             expect(matrixOverall(rows[1]).getAttribute("data-matrix-all-pass")).toBe("false");
             expect(matrixOverall(rows[1]).getAttribute("data-matrix-passing")).toBe("0");
@@ -783,10 +793,10 @@ describe("TowerPickCheckCommand", () => {
             const summary = content.querySelector('[data-role="matrix-summary"]');
             expect(summary).not.toBeNull();
             if (summary === null) throw new Error("Matrix summary is missing.");
-            expect(summary.getAttribute("data-passing-cranes")).toBe("1");
-            expect(summary.getAttribute("data-state")).toBe("cranes-pass");
+            expect(summary.getAttribute("data-passing-cranes")).toBe("0");
+            expect(summary.getAttribute("data-state")).toBe("no-crane-passes");
             expect(summary.textContent).toBe(
-                "1 of 2 evaluated catalogued cranes pass every pick: Potain MCT 88. 2 luffing-jib crane(s) were not evaluated.",
+                "None of the 2 evaluated catalogued cranes passes every pick. 2 luffing-jib crane(s) were not evaluated.",
             );
         } finally {
             restore();

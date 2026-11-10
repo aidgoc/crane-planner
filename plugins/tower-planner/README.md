@@ -3,7 +3,7 @@
 Sourced tower-crane catalogue, capacity model, placement and clearance checks for the DGOC Crane
 Planner. The catalogue contains four entries:
 
-- **Potain MCT 88** (EN 14439 C25) — Cycle 2 idealised tip-load model. Default entry.
+- **Potain MCT 88** (EN 14439 C25) — published per-radius 5 t hook chart lookup. Default entry.
 - **Potain MCT 85 F5** (FEM 1.001-A3) — published per-radius load-chart lookup.
 - **JASO J438PA.2R, 213 ft TD** (EN 14439 C25 / FEM 1005-C25) — `INDICATIVE` luffing-jib
   configuration. Listed but **not evaluated** by the trolley-jib capacity engine.
@@ -23,7 +23,7 @@ are transcribed from the PDF.
 | `data/crane-catalogue.json` | Crane data. Every number carries a source (document + page) or is explicitly `INDICATIVE`. |
 | `src/catalogueValidator.ts` | Strict JSON validator. Rejects bare numbers, unknown sources, malformed tip tables and load charts, missing `notStated` reasons, `notStated` heaviest components on the Potain trolley-jib entries, wrong entry counts and a non-MCT 88 default. `notStated` is permitted for the JASO model. |
 | `src/catalogue.ts` | Validates the JSON at module load and exposes `MCT88`, `MCT85F5`, `JASO_TD`, `JASO_2R`, `TOWER_CRANES` and `getCraneById`. |
-| `src/capacity.ts` | MCT 88 tip-load model, MCT 85 F5 chart lookup, the `SIMULATED` wind rule and the luffing-jib guard. |
+| `src/capacity.ts` | MCT 88 and MCT 85 F5 published chart lookup, the `SIMULATED` wind rule and the luffing-jib guard. |
 | `src/pickEngine.ts` | UI-independent pick evaluation, utilisation, PASS/FAIL and crane filtering. |
 | `src/units.ts` | One-way metre → millimetre conversion for the Chili3D scene boundary. |
 | `src/command.ts` | Three-pick sample dialog for the selected catalogue crane. |
@@ -68,7 +68,7 @@ and page before using the result.
 
 | Crane | Catalogue standard | Max capacity | Max working jib | Minimum radius | Default jib | Capacity source |
 | --- | --- | --- | --- | --- | --- | --- |
-| Potain MCT 88 | EN 14439 C25 | 5 t | 52 m | n/a (idealised model) | 30 m (`INDICATIVE`) | Tip-load labels, datasheet p. 1 |
+| Potain MCT 88 | EN 14439 C25 | 5 t | 52 m | 2.7 m (printed) | 30 m (`INDICATIVE`) | Upper 5 t hook per-radius chart, datasheet p. 4 |
 | Potain MCT 85 F5 | FEM 1.001-A3 | 5 t | 52 m | 2.7 m (printed) | 30 m (`INDICATIVE`) | Per-radius chart, datasheet p. 3 |
 | JASO J438PA.2R (213 ft TD) | EN 14439 C25 / FEM 1005-C25 | 16.0118 t (converted) | 64.9224 m (213 ft) | 24.9936 m (82 ft) | 213 ft (`INDICATIVE`) | Imperial chart, p. 2; not evaluated (luffing-jib) |
 | JASO J438PA.2R (213 ft 2R) | EN 14439 C25 / FEM 1005-C25 | 18.0076 t (converted) | 64.9224 m (213 ft) | 24.9936 m (82 ft) | 213 ft (`INDICATIVE`) | Imperial chart, p. 2; not evaluated (luffing-jib) |
@@ -88,24 +88,31 @@ maximum-capacity label.
 
 ## Capacity models
 
-### MCT 88 — idealised tip-load model
+### MCT 88 — published chart lookup
 
-For an installed jib length `L` and hook radius `r`, with published tip load `T(L)`:
+The MCT 88 uses the upper **5 t hook** per-radius table on datasheet p. 4 for all eight published jib
+configurations (20, 25, 30, 35, 40, 45, 50 and 52 m; 86 chart points). The lower table on the same
+page is the **3 t hook** table and is not used for the catalogue's capacity or tip-load values.
 
-- The installed jib must not exceed the published 52 m working maximum; 53.1 m is the overall tip
-  length, not a jib configuration. `capacityAt` returns `null` above 52 m.
-- Rated moment `M = T(L) × L`.
-- Corner radius `r_c = M / maximum capacity`.
-- `capacity(r) = maximum capacity` for `r <= r_c`.
-- `capacity(r) = M / r` for `r_c < r <= L`.
-- `capacity(r) = null` for `r > L`.
+- The installed jib must be exactly one of the eight published configurations; otherwise the result
+  is `INVALID`.
+- The printed minimum hook radius is 2.7 m. A radius below 2.7 m is `OUT_OF_RANGE`.
+- From 2.7 m to the first stored point the 5 t plateau applies; the first stored point is the end of
+  the plateau, not the minimum radius.
+- Between chart points, the capacity at the **next larger radius** is used (the lower bounding value).
+  No interpolation is used.
+- There is no extrapolation beyond the last published radius.
 
-This two-piece curve is the Cycle 2 project idealisation, **not** a manufacturer equation. For the
-MCT 88 with a 30 m jib it gives `M = 81 t·m`, `r_c = 16.2 m`, and `capacity(30 m) = 2.70 t`.
+The runtime capacity is selected from this chart, not calculated with the old Cycle 2 inverse-radius
+(`M / r`) formula. For example, on the 30 m jib, 20 m returns 3.9 t, 28 m returns 2.5 t (the 29 m
+point), and 30 m returns 2.5 t. On the 52 m jib, 39.20 m returns 1.55 t (the 40 m point), 47.20 m
+returns 1.15 t (the 50 m point), and 52 m returns 1.10 t. The chart is numerically identical to the
+MCT 85 F5 chart except at the 25 m jib endpoint (MCT 88 3.00 t; MCT 85 F5 3.02 t).
 
 ### MCT 85 F5 — published chart lookup
 
-The MCT 85 F5 uses its own manufacturer chart, not the MCT 88 formula:
+The MCT 85 F5 uses its own manufacturer chart. The lookup rules are the same as the MCT 88 chart
+rules, but the two source pages must not be mixed:
 
 - The installed jib must be exactly one of the eight published configurations; otherwise the result
   is `INVALID`.
@@ -116,7 +123,8 @@ The MCT 85 F5 uses its own manufacturer chart, not the MCT 88 formula:
 - Between chart points, the capacity at the **next larger radius** is used (the lower bounding value).
   This cannot overstate the published capacity, though it may understate it between points.
 - There is no extrapolation beyond the last published radius.
-- The chart is the 5 t hook curve; the dashed 2.5 t-hook variant is not modelled.
+- The chart is the 5 t hook curve; a dashed variant annotation is not modelled or treated as a
+  general capacity deduction.
 
 For example, on the 30 m jib, 19 m returns 3.9 t (the 20 m point), not the linearly interpolated
 4.48 t; 24 m returns 3.0 t (the 25 m point); 28 m returns 2.5 t (the 29 m point).
@@ -151,9 +159,9 @@ The MCT 88 and MCT 85 F5 tables use the catalogue default 30 m jib.
 
 | Pick | Load | Radius | Capacity | Utilisation | Result |
 | --- | --- | --- | --- | --- | --- |
-| 1 | 2.5 t | 20 m | 4.05 t | 61.7 % | PASS |
-| 2 | 3.0 t | 25 m | 3.24 t | 92.6 % | PASS |
-| 3 | 4.0 t | 30 m | 2.70 t | 148.1 % | FAIL |
+| 1 | 2.5 t | 20 m | 3.90 t | 64.1 % | PASS |
+| 2 | 3.0 t | 25 m | 3.00 t | 100.0 % | PASS |
+| 3 | 4.0 t | 30 m | 2.50 t | 160.0 % | FAIL |
 
 The third row is the acceptance case from `BACKLOG.md`: a 4 t pick at 30 m on the 30 m jib must fail.
 
@@ -208,10 +216,12 @@ in the copied plugin directory.
   recommendation. The JASO 213 ft TD/2R configuration choice is `INDICATIVE` for the same reason: the
   datasheet publishes other jib lengths.
 - The model is not a structural, dynamic, reeving or ground-bearing check.
-- The MCT 88 source documents disagree about the 30 m tip value (2.70 t label vs 2.54 t imperial
-  conversion, and a 2.5 t point on the metric curve page). The load-curve page is also recorded as
-  p. 3 in the Cycle 2 copy and p. 4 in the local reference copy; that page-number ambiguity is
-  unresolved and is not guessed. The chosen value and the discrepancies are documented in
+- The MCT 88 p. 4 page contains two hook tables: the upper 5 t table used for all eight jib
+  configurations and a lower 3 t table that is recorded but not used. The p. 1 summary labels do not
+  all equal the upper table (for example, 30 m: p. 1 2.70 t vs chart 2.50 t; 52 m: p. 1 1.15 t vs
+  chart 1.10 t). The catalogue follows the p. 4 upper table. The load-curve page is p. 4 in the local
+  PDF; a Cycle 2 mirrored copy recorded p. 3, which remains unverified. A dashed `-0.245 t`
+  annotation on p. 4 is not treated as a general deduction and is not modelled. See
   [`docs/SOURCES.md`](docs/SOURCES.md) §3.
 - The MCT 85 F5 p. 1 tip table labels 25 m as 3.0 t, while the p. 3 chart prints 3.02 t. The tip table
   keeps the p. 1 label; the capacity lookup uses the p. 3 point.
@@ -221,6 +231,7 @@ in the copied plugin directory.
 - The JASO mast width, base width, counter-jib structural length, counter-jib radius and heaviest
   erection component are `notStated` because the inspected PDF does not publish them. They are not
   inferred from other dimensions or from the combined transport package.
-- The MCT 85 F5 and Jaso PDFs do not state a redistribution licence. Confirm the manufacturer's terms
-  before packaging or mirroring them. The PDFs are ignored by Git, and the production build copies
-  only `manifest.json`, `icons/` and `dist/`, so they are not in `dist/plugins/tower-planner/`.
+- No redistribution licence was verified for the MCT 88, MCT 85 F5 or Jaso PDFs. Confirm the
+  manufacturer's terms before packaging or mirroring them. The PDFs are ignored by Git, and the
+  production build copies only `manifest.json`, `icons/` and `dist/`, so they are not in
+  `dist/plugins/tower-planner/`.

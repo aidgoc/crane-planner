@@ -6,11 +6,15 @@ STATUS: RECONSTRUCTED EVIDENCE - NOT THE ORIGINAL CYCLE 2 DOCUMENT
 
 `BACKLOG.md` refers to `docs/validation-calculation.txt`. When this file was
 reconstructed on 2026-10-28, no original file existed in the working tree or in
-Git history. This document reconstructs the calculation from:
+Git history. It was revised on 2026-11-10 for the corrected MCT 88 load chart.
+This document reconstructs the calculation from:
 
 - the current catalogue in `data/crane-catalogue.json`;
 - the provenance and source notes in `docs/SOURCES.md`;
-- the Cycle 2 three-point comparison recorded in `docs/SOURCES.md` section 3.3;
+- the upper 5 t hook load chart on PDF p. 4 of the local MCT 88 PDF,
+  `plugins/tower-planner/docs/02D_FEM1001mt_MCT88_2006_40-21.pdf`;
+- the lower 3 t hook table on the same page, recorded only to show which table
+  the catalogue does not use;
 - a fresh read of the available MCT 85 F5 source PDF, p. 3.
 
 It is not a recovered original, must not be cited as one, and does not claim that
@@ -25,132 +29,191 @@ Planning aid, not a certified lift plan.
 
 - Load: tonnes (t).
 - Length and radius: metres (m).
-- Moment: tonne-metres (t.m). The UI and markdown documents may render this as
-  t with a middle dot; the arithmetic is the same.
 - Wind speed: kilometres per hour (km/h).
-- Imperial conversion used only for the validation comparison:
-  1 USt (US short ton) = 0.907185 t.
-- Error method: absolute percentage error against the converted reference:
-
-      error_pct = abs(model_capacity_t - reference_capacity_t)
-                  / reference_capacity_t * 100
-
-- Acceptance limit for the Cycle 2 comparison: error_pct <= 10 %.
 - Radius convention: hook radius, measured from the slewing centre. A radius
-  greater than the installed jib is outside the model.
-- Page references are PDF page indices, 1-based. Neither source PDF has printed
+  greater than the installed jib is outside the chart.
+- Page references are PDF page indices, 1-based. The source PDFs have no printed
   page numbers.
+- The MCT 88 capacity is a published chart lookup. It is not calculated with an
+  inverse-radius moment formula, so no moment or percentage-error calculation is
+  used in this document.
 
 
-2. MCT 88 MODEL FORMULAS
-------------------------
+2. MCT 88 CAPACITY - PUBLISHED 5 T HOOK CHART
+----------------------------------------------
 
-The MCT 88 uses the Cycle 2 two-piece idealisation. For an installed jib length L
-and published tip load T(L):
+The MCT 88 uses the upper 5 t hook table on PDF p. 4. The chart has 8 jib rows
+(20, 25, 30, 35, 40, 45, 50 and 52 m) and 86 published points. The lower table
+on the same page is the 3 t hook table and is not used.
 
-    M = T(L) * L
-    r_corner = M / maximum_capacity
-    capacity(r) = maximum_capacity        for 0 < r <= r_corner
-    capacity(r) = M / r                   for r_corner < r <= L
-    capacity(r) = null                    for r > L
+Lookup rules implemented by `capacityAt`:
 
-For the 30 m jib used by the sample and the three-point comparison:
+- The installed jib must be exactly one of the eight published configurations.
+  For an unsupported jib, `capacityAt` returns null; the pick layer reports
+  INVALID with issue `jib-outside-published-range`.
+- The printed minimum radius is 2.7 m. A radius below 2.7 m is OUT_OF_RANGE;
+  the 5 t plateau does not extend below the published minimum.
+- From 2.7 m to the first stored point, the 5 t plateau applies. The first stored
+  point is the end of the plateau, not the minimum radius.
+- Between two stored points, use the capacity at the next larger radius (the
+  lower bounding value). No interpolation is used.
+- Beyond the last stored radius, there is no value and the result is null. No
+  extrapolation is used.
+- The optional SIMULATED wind derate is applied once after the chart lookup; see
+  section 6. It is not part of the published chart.
 
-    T(30) = 2.70 t
-    M = 2.70 t * 30 m = 81.0 t.m
-    r_corner = 81.0 t.m / 5 t = 16.2 m
+30 m jib spot checks (p. 4 upper 5 t table):
 
-Hand checks:
+    radius    capacity    basis
+    -------   ---------   -----------------------------------------------
+    2.69 m    null        below the printed 2.7 m minimum
+    2.70 m    5.00 t      printed minimum, 5 t plateau
+    16.3 m    5.00 t      first stored point, end of plateau
+    19.0 m    3.90 t      next larger point is 20 m -> 3.9 t
+    20.0 m    3.90 t      stored point
+    22.0 m    3.50 t      stored point
+    24.0 m    3.00 t      next larger point is 25 m -> 3.0 t
+    25.0 m    3.00 t      stored point
+    26.0 m    2.75 t      next larger point is 27 m -> 2.75 t
+    28.0 m    2.50 t      next larger point is 29 m -> 2.5 t
+    30.0 m    2.50 t      stored point / last published radius
+    30.1 m    null        beyond the installed jib
 
-    capacity(5 m)    = 5.00 t       (inside the 16.2 m corner)
-    capacity(16.2 m) = 5.00 t       (at the corner)
-    capacity(20 m)   = 81 / 20 = 4.05 t
-    capacity(25 m)   = 81 / 25 = 3.24 t
-    capacity(30 m)   = 81 / 30 = 2.70 t
-    capacity(30.1 m) = null         (beyond the installed jib)
+52 m jib spot checks (p. 4 upper 5 t table):
 
-This is a project idealisation, not a manufacturer equation. It is not used for
-the MCT 85 F5, whose capacity comes from its published per-radius chart.
+    radius    capacity    basis
+    -------   ---------   -----------------------------------------------
+    2.69 m    null        below the printed 2.7 m minimum
+    2.70 m    5.00 t      printed minimum, 5 t plateau
+    13.7 m    5.00 t      first stored point, end of plateau
+    28.43 m   2.15 t      next larger point is 30 m -> 2.15 t
+    39.20 m   1.55 t      next larger point is 40 m -> 1.55 t
+    47.20 m   1.15 t      next larger point is 50 m -> 1.15 t
+    52.0 m    1.10 t      stored point / last published radius
+    52.1 m    null        beyond the installed jib
+
+Other representative checks:
+
+    jib/radius         capacity    basis
+    ----------------   ---------   -----------------------------------------
+    20 m jib @ 20 m    3.95 t      stored last point
+    25 m jib @ 20 m    3.90 t      stored point
+    25 m jib @ 25 m    3.00 t      stored last point
+    35 m jib @ 31 m    2.50 t      next larger point is 31.6 m
+    35 m jib @ 31.7 m  2.45 t      next larger point is 32 m
+
+The runtime value is selected from the chart; it is not `M / r`. The old Cycle 2
+two-piece example is therefore obsolete and is not used.
 
 
-3. MCT 88 THREE-POINT COMPARISON
---------------------------------
+3. MCT 88 STEP-LOOKUP HAND CHECKS
+---------------------------------
 
-Reference readings are the Cycle 2 notes for the imperial 98 ft row, upper line:
-66 ft -> 4.3 USt, 82 ft -> 3.3 USt, 98 ft -> 2.8 USt. The nominal 98 ft row is
-approximately 29.87 m, i.e. the 30 m nominal jib. The 30 m model uses the p. 1
-metric label 2.70 t; the imperial values are used only for this sanity check.
+The requested radius is not snapped to a chart point. The engine returns the
+capacity at the next larger published radius, which is conservative because the
+chart never increases with radius.
 
-Radius   Model capacity        Converted reference             Error
--------  -------------------   -----------------------------   -------
-20.1 m   81 / 20.1 = 4.029851  4.3 USt * 0.907185 = 3.900895   3.31 %
-25.0 m   81 / 25.0 = 3.240000  3.3 USt * 0.907185 = 2.993710   8.23 %
-29.9 m   81 / 29.9 = 2.709030  2.8 USt * 0.907185 = 2.540118   6.65 %
+Worked examples:
 
-Worked errors:
+    28.43 m on the 52 m jib
+      published points around it: 27.0 m -> 2.45 t, 30.0 m -> 2.15 t
+      next larger radius: 30.0 m
+      result: 2.15 t
 
-    20.1 m: abs(4.029851 - 3.900895) / 3.900895 * 100 = 3.3058 % -> 3.31 %
-    25.0 m: abs(3.240000 - 2.993710) / 2.993710 * 100 = 8.2269 % -> 8.23 %
-    29.9 m: abs(2.709030 - 2.540118) / 2.540118 * 100 = 6.6498 % -> 6.65 %
+    39.20 m on the 52 m jib
+      published points around it: 37.0 m -> 1.70 t, 40.0 m -> 1.55 t
+      next larger radius: 40.0 m
+      result: 1.55 t
 
-Worst error: 8.23 % at 25.0 m, inside the 10 % acceptance limit.
+    47.20 m on the 52 m jib
+      published points around it: 47.0 m -> 1.25 t, 50.0 m -> 1.15 t
+      next larger radius: 50.0 m
+      result: 1.15 t
 
-If the 25.0 m reference is first rounded to 2.99 t, the same calculation gives
-abs(3.24 - 2.99) / 2.99 * 100 = 8.36 %, i.e. 8.4 % to one decimal place. The
-Cycle 2 note's 8.4 % figure comes from that rounded reference. Both forms are
-inside the limit; this document reports the unrounded-reference value above.
+    31.0 m on the 35 m jib
+      published points around it: 29.1 m -> 2.50 t, 31.6 m -> 2.50 t
+      next larger radius: 31.6 m
+      result: 2.50 t
+
+    31.7 m on the 35 m jib
+      published points around it: 31.6 m -> 2.50 t, 32.0 m -> 2.45 t
+      next larger radius: 32.0 m
+      result: 2.45 t
+
+These checks show that a requested radius between points is not interpolated.
+For example, 28.43 m is not reported as a value between 2.45 t and 2.15 t; it is
+reported as 2.15 t.
+
+The catalogue's `tipLoadByJib` values are the last published point of each upper
+5 t chart row: 20 m -> 3.95 t, 25 m -> 3.00 t, 30 m -> 2.50 t, 35 m -> 2.22 t,
+40 m -> 1.90 t, 45 m -> 1.65 t, 50 m -> 1.40 t, 52 m -> 1.10 t.
 
 
 4. MCT 88 SOURCE DISCREPANCIES
 ------------------------------
 
-4.1 Metric label versus imperial conversion
+4.1 Two hook tables on p. 4
 
-    p. 1 metric 30 m tip label: 2.70 t
-    98 ft row, upper line:      2.8 USt * 0.907185 = 2.540118 t -> 2.54 t
+    Upper table: 5 t hook chart.
+      30 m jib tip: 30 m -> 2.50 t
+      52 m jib tip: 52 m -> 1.10 t
 
-The model keeps 2.70 t. The 2.54 t value is a validation-only comparison and is
-never substituted into the capacity model.
+    Lower table: 3 t hook chart.
+      30 m jib tip: 30 m -> 2.70 t
+      52 m jib tip: 52 m -> 1.15 t
 
-4.2 Metric load-curve page
+The catalogue uses the upper 5 t table for all eight supported jib
+configurations. The lower 3 t table is not used for capacity or tip-load values,
+and points from the two tables must not be mixed.
 
-The local 8-page reference copy places the metric load curves on p. 4. Its 30 m
-row appears to end at 30 m with 2.5 t, while p. 1 labels the 30 m jib at 2.70 t.
-The Cycle 2 mirrored copy records the load-chart page as p. 3; the local copy's
-p. 3 is the anchorages page, so that number remains unverified against the local
-copy. The catalogue's `datasheetLoadCharts` source keeps the Cycle 2 p. 3 number
-and notes the p. 4 observation. It is not referenced by any MCT 88 catalogue
-field and is retained only for this comparison. The model keeps 2.70 t.
+The p. 1 summary labels do not all equal the upper table (for example, p. 1
+labels the 30 m jib at 2.70 t and the 52 m jib at 1.15 t). The catalogue follows
+the p. 4 upper 5 t table.
 
-4.3 Reference PDF availability
+4.2 Dashed -0.245 t annotation
 
-The MCT 88 reference PDF is not in this repository. A copy held outside the
-repository was inspected for the Cycle 4 review; its SHA-256 is
+A dashed variant annotation on p. 4 reads `-0.245 t`. The source does not
+establish that this is a general deduction from every chart value. It is
+recorded but not modelled and is not subtracted from the rated capacities.
+
+4.3 Metric load-curve page
+
+The local 8-page MCT 88 PDF places the metric load curves on p. 4; the catalogue
+records p. 4 in `datasheetLoadCharts.page`. The Cycle 2 mirrored copy recorded
+the page as p. 3; that number remains unverified against the local copy and is
+not used.
+
+4.4 Reference PDF availability
+
+The MCT 88 PDF is present in this repository's working tree at
+`plugins/tower-planner/docs/02D_FEM1001mt_MCT88_2006_40-21.pdf`. It is ignored by
+Git and untracked; it is not absent. Its SHA-256 is
 0B7A7DFFCC7BB8B5DD54BA69120D1828DF80F0C6FD7EAD7AC0D505EFB0F7B82F. Page 1
 confirms 52 m as the maximum working jib, 53.1 m as the overall tip length and
 1.2 m as the mast width; page 6 confirms 11.9 m as the counter-jib structural
-length and 4.38 t as the variant-A counter-jib mass. The imperial readings in
-section 3 still come from the Cycle 2 notes, not from a fresh read of that PDF.
+length and 4.38 t as the variant-A counter-jib mass.
+
+4.5 Unresolved standard attribution
+
+The PDF prints FEM 1.001-A3. The catalogue `standard` field is EN 14439 C25,
+associated with the e-catalogue URL. The two attributions are not claimed to be
+equivalent and the question remains pending mentor confirmation. This document
+does not change the catalogue `standard` field.
 
 
-5. MCT 85 F5 SPOT CHECKS - SEPARATE FROM THE MCT 88 MODEL
+5. MCT 85 F5 SPOT CHECKS - SEPARATE FROM THE MCT 88 CHART
 ---------------------------------------------------------
 
-The MCT 85 F5 does not use the MCT 88 moment formula. Its capacity is read from
-the published per-radius chart on PDF p. 3. The printed minimum radius is 2.7 m.
-The first stored radius on each row is the end of the 5 t plateau, not the
-minimum radius.
+The MCT 85 F5 uses its own published per-radius chart on PDF p. 3. The chart has
+8 jib rows and 86 points, and the printed minimum radius is 2.7 m. The lookup
+rules are the same as section 2: exact published jib, 2.7 m minimum, 5 t plateau
+to the first stored point, next larger radius between points, and no
+extrapolation beyond the last point.
 
-Chart lookup rules:
-
-- The installed jib must be exactly one of the eight published configurations:
-  20, 25, 30, 35, 40, 45, 50, 52 m.
-- A radius below 2.7 m is OUT_OF_RANGE. The 5 t plateau does not extend below
-  the printed minimum.
-- From 2.7 m to the first stored point, the 5 t plateau applies.
-- Between two stored points, use the capacity at the next larger radius (the
-  lower bounding value). No linear interpolation is used.
-- Beyond the last stored radius, there is no value. No extrapolation.
+The MCT 85 F5 chart is numerically identical to the MCT 88 p. 4 upper 5 t chart
+except at the 25 m jib endpoint: MCT 88 3.00 t, MCT 85 F5 3.02 t. The cranes
+still have separate source pages and dimensions; do not mix their tip tables or
+component-weight tables.
 
 30 m jib spot checks (p. 3 chart):
 
@@ -176,15 +239,15 @@ Chart lookup rules:
     2.70 m    5.00 t      printed minimum, 5 t plateau
     13.7 m    5.00 t      first stored point, end of plateau
     50.0 m    1.15 t      stored point
-    52.0 m    1.10 t      stored point / p. 1 tip label
+    52.0 m    1.10 t      stored point
 
 Source discrepancies and limitations:
 
 - p. 1 labels the 25 m tip load as 3.0 t; p. 3 prints 3.02 t at the last chart
   point. The tip-load table keeps the p. 1 label; the capacity lookup uses the
   p. 3 chart value.
-- The chart is the 5 t hook curve. The dashed 2.5 t-hook variant is 0.245 t lower
-  beyond its changeover and is not modelled.
+- A dashed variant annotation on the chart page reads `-0.245 t`; the source
+  does not establish it as a general deduction, and it is not modelled.
 - The chart's first stored radius varies by jib (13.7 m to 16.4 m). That is the
   end of the plateau, not the minimum radius; the 2.7 m minimum is stored
   separately in every chart row.
@@ -205,7 +268,8 @@ or EN 14439 rule:
     if wind >= 20 km/h:             capacity * 0.8, applied once
 
 The factor is applied once to the final base capacity. It does not alter any
-published chart value or the MCT 88 moment calculation.
+published chart value; both the MCT 88 and MCT 85 F5 base capacities are chart
+lookups.
 
 
 7. REPRODUCTION

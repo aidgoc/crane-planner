@@ -8,8 +8,7 @@ import { buildSelectionMatrix, selectionReason } from "../src/selectionMatrix";
 
 // Hand-worked for mast (44, 17) with both cranes at their 30 m catalogue default jib:
 //   P1: supply hypot(18, 11.5) = 21.36 m; drop hypot(18, 22) = 28.43 m -> drop governs.
-//       MCT 88: 81 / 28.43 = 2.85 t -> 2.0 / 2.85 = 70.2 % PASS.
-//       MCT 85 F5: 28.43 m falls between the 27 m and 29 m chart points -> 2.50 t -> 80.0 % PASS.
+//       Both charts: 28.43 m falls between the 27 m and 29 m points -> 2.50 t -> 80.0 % PASS.
 //   P2: supply hypot(39, 4) = 39.20 m > 30 m jib -> OUT_OF_RANGE on both cranes.
 //   P3: supply hypot(38, 28) = 47.20 m > 30 m jib -> OUT_OF_RANGE on both cranes.
 //   P4: supply hypot(11, 9) = 14.21 m; drop hypot(6, 8) = 10.00 m -> supply governs.
@@ -62,8 +61,10 @@ describe("buildSelectionMatrix", () => {
         ]);
         expect(mct88.picks[0].radiusM).toBeCloseTo(28.4253, 3);
         expect(mct88.picks[0].governing).toBe("drop");
-        expect(mct88.picks[0].capacityT).toBeCloseTo(2.8496, 3);
-        expect(mct88.picks[0].utilisationPct).toBeCloseTo(70.186, 3);
+        // MCT 88's p. 4 chart: 28.425 m is above the 27 m point (2.75 t) and
+        // at or below the 29 m point (2.50 t), so the step lookup gives 2.50 t.
+        expect(mct88.picks[0].capacityT).toBeCloseTo(2.5, 10);
+        expect(mct88.picks[0].utilisationPct).toBeCloseTo(80, 10);
         expect(mct88.picks[3].radiusM).toBeCloseTo(14.2127, 3);
         expect(mct88.picks[3].governing).toBe("supply");
         expect(mct88.picks[3].capacityT).toBeCloseTo(5, 10);
@@ -84,10 +85,9 @@ describe("buildSelectionMatrix", () => {
         expect(mct85.picks[3].utilisationPct).toBeCloseTo(84, 10);
     });
 
-    test("marks only the crane that passes every pick", () => {
+    test("reports no crane passing when both 30 m charts are below the load", () => {
         // Five 2.6 t lifts at a 30 m radius from mast (0, 0):
-        //   MCT 88: 81 / 30 = 2.70 t -> 2.6 / 2.70 = 96.3 % PASS.
-        //   MCT 85 F5: 2.50 t at 30 m -> 2.6 / 2.50 = 104.0 % FAIL.
+        //   Both charts print 2.50 t at 30 m -> 2.6 / 2.50 = 104.0 % FAIL.
         const picks: Pick[] = ["P1", "P2", "P3", "P4", "P5"].map((label) => ({
             label,
             loadT: 2.6,
@@ -97,13 +97,13 @@ describe("buildSelectionMatrix", () => {
 
         const matrix = buildSelectionMatrix(TOWER_CRANES, picks, { mast: { x: 0, y: 0 } });
 
-        expect(matrix.state).toBe("cranes-pass");
-        expect(matrix.allPassCraneIds).toEqual(["potain-mct-88"]);
-        expect(matrix.passingCraneCount).toBe(1);
+        expect(matrix.state).toBe("no-crane-passes");
+        expect(matrix.allPassCraneIds).toEqual([]);
+        expect(matrix.passingCraneCount).toBe(0);
         expect(matrix.evaluatedCraneCount).toBe(2);
         expect(matrix.unsupportedCraneCount).toBe(2);
-        expect(matrix.rows[0].allPass).toBe(true);
-        expect(matrix.rows[0].failedCount).toBe(0);
+        expect(matrix.rows[0].allPass).toBe(false);
+        expect(matrix.rows[0].failedCount).toBe(5);
         expect(matrix.rows[1].allPass).toBe(false);
         expect(matrix.rows[1].failedCount).toBe(5);
         expect(matrix.rows[2].unsupported).toBe(true);
@@ -209,15 +209,16 @@ describe("buildSelectionMatrix", () => {
     });
 
     test("applies the shared wind derate to every crane row", () => {
-        // MCT 88 at 20 m on the 30 m jib: 81 / 20 = 4.05 t. The SIMULATED
-        // 20 km/h derate gives 4.05 x 0.8 = 3.24 t, so 3.5 t changes to FAIL.
+        // MCT 88 at 20 m on the 30 m jib: the p. 4 chart prints 3.90 t. The
+        // SIMULATED 20 km/h derate gives 3.90 x 0.8 = 3.12 t, so 3.5 t changes
+        // to FAIL.
         const picks: Pick[] = [{ label: "P1", loadT: 3.5, radiusM: 20 }];
 
         const calm = buildSelectionMatrix([MCT88], picks);
         expect(calm.state).toBe("cranes-pass");
 
         const windy = buildSelectionMatrix([MCT88], picks, { windKmh: 20 });
-        expect(windy.rows[0].picks[0].capacityT).toBeCloseTo(3.24, 10);
+        expect(windy.rows[0].picks[0].capacityT).toBeCloseTo(3.12, 10);
         expect(windy.rows[0].picks[0].status).toBe("FAIL");
         expect(windy.state).toBe("no-crane-passes");
     });
