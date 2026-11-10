@@ -153,7 +153,7 @@ export class MobileCraneBodyNode extends ParameterShapeNode {
         const dirXYZ = new XYZ({ x: dirX, y: dirY, z: dirZ });
         const originXYZ = new XYZ({ x: pivotXMm, y: pivotYMm, z: pivotZMm });
 
-        const boomRadiusMm = 0.5 * MM_PER_M; // 0.5 m radius boom cylinder
+        const boomRadiusMm = 0.5 * MM_PER_M; // INDICATIVE: 0.5 m radius boom cylinder for marker visualization
         const boomLengthMm = this.boomLengthM * MM_PER_M;
 
         const boomRes = factory.cylinder(dirXYZ, originXYZ, boomRadiusMm, boomLengthMm);
