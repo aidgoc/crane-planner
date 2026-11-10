@@ -13,8 +13,8 @@ import {
     serialize,
     XYZ,
 } from "@chili3d/core";
-import { metresToMillimetres } from "../units";
 import { MCT88 } from "../catalogue";
+import { metresToMillimetres } from "../units";
 
 export interface TowerCraneBodyNodeOptions {
     document: IDocument;
@@ -83,10 +83,7 @@ export class TowerCraneBodyNode extends ParameterShapeNode {
     constructor(options: TowerCraneBodyNodeOptions) {
         super({ document: options.document, name: "Tower Crane" });
         this._crane = options.crane ?? MCT88;
-        this.setPrivateValue(
-            "jibLengthM",
-            options.jibLengthM ?? this._crane.defaultJibM.value,
-        );
+        this.setPrivateValue("jibLengthM", options.jibLengthM ?? this._crane.defaultJibM.value);
         // Mast height: 50 m INDICATIVE default (freestanding height for MCT 88).
         // This is NOT a manufacturer-sourced value; it is a planning assumption.
         // A real project should use the specific mast configuration from the manufacturer.
@@ -102,8 +99,8 @@ export class TowerCraneBodyNode extends ParameterShapeNode {
         const mastHeightMm = metresToMillimetres(this.mastHeightM);
 
         // Cross-section dimensions (INDICATIVE)
-        const JIB_WIDTH_MM = metresToMillimetres(2.0);    // 2m wide
-        const JIB_DEPTH_MM = metresToMillimetres(2.5);    // 2.5m deep
+        const JIB_WIDTH_MM = metresToMillimetres(2.0); // 2m wide
+        const JIB_DEPTH_MM = metresToMillimetres(2.5); // 2.5m deep
         const MAST_RADIUS_MM = mastWidthMm / 2;
         const COUNTER_JIB_WIDTH_MM = metresToMillimetres(3.0);
         const COUNTER_JIB_DEPTH_MM = metresToMillimetres(2.5);
@@ -113,12 +110,7 @@ export class TowerCraneBodyNode extends ParameterShapeNode {
         const shapes: IShape[] = [];
 
         // 1. Mast - vertical cylinder at origin
-        const mastResult = shapeFactory.cylinder(
-            XYZ.unitZ,
-            XYZ.zero,
-            MAST_RADIUS_MM,
-            mastHeightMm,
-        );
+        const mastResult = shapeFactory.cylinder(XYZ.unitZ, XYZ.zero, MAST_RADIUS_MM, mastHeightMm);
         if (!mastResult.isOk) return mastResult;
         shapes.push(mastResult.value);
 
@@ -141,8 +133,8 @@ export class TowerCraneBodyNode extends ParameterShapeNode {
         const jibResult = shapeFactory.box(
             jibPlane,
             jibLengthMm,
-            metresToMillimetres(2.0),    // 2m wide
-            metresToMillimetres(2.5),    // 2.5m deep
+            metresToMillimetres(2.0), // 2m wide
+            metresToMillimetres(2.5), // 2.5m deep
         );
         if (!jibResult.isOk) return jibResult;
         shapes.push(jibResult.value);

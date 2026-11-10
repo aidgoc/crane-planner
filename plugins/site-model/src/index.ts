@@ -12,6 +12,7 @@ export * from "./extrusion";
 export * from "./hazardClearance";
 export * from "./imageUnderlay";
 export * from "./polygonEditor";
+export * from "./report";
 export * from "./sampleSiteData";
 export * from "./schema";
 export * from "./siteStore";
