@@ -22,10 +22,17 @@ type Segment = readonly [Point2D, Point2D];
 export class CraneScene {
     private readonly ids: number[] = [];
 
-    constructor(private readonly view: IView) {}
+    constructor(private view: IView) {}
+
+    setView(view: IView) {
+        if (this.view === view) return;
+        this.clearMeshes(false);
+        this.view.update();
+        this.view = view;
+    }
 
     update(layout: CraneLayout) {
-        this.clear(false);
+        this.clearMeshes(false);
 
         this.ids.push(
             this.drawCircle(
@@ -80,8 +87,12 @@ export class CraneScene {
         this.view.update();
     }
 
+    clear() {
+        this.clearMeshes(true);
+    }
+
     dispose(update = true) {
-        this.clear(update);
+        this.clearMeshes(update);
     }
 
     private markerSegments(center: Point2D): Segment[] {
@@ -155,7 +166,7 @@ export class CraneScene {
         return this.view.document.visual.context.displayMesh([data], { onTop: true });
     }
 
-    private clear(update = true) {
+    private clearMeshes(update = true) {
         const context = this.view.document.visual.context;
         for (const id of this.ids) {
             context.removeMesh(id);

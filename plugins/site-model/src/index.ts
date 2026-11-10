@@ -2,6 +2,7 @@
 // See LICENSE file in the project root for full license information.
 
 import type { CommandKeys, Locale, Plugin, RibbonGroupKeys, RibbonTabKeys } from "@chili3d/core";
+import { ImportSiteDxfCommand } from "./commands/importSiteDxf";
 import { LoadSampleSiteCommand } from "./commands/loadSampleSite";
 import { REQUIRED_DISCLAIMER } from "./types";
 
@@ -15,18 +16,20 @@ export * from "./polygonEditor";
 export * from "./report";
 export * from "./sampleSiteData";
 export * from "./schema";
+export * from "./siteSelection";
+export * from "./siteSource";
 export * from "./siteStore";
 export * from "./types";
 
 const SiteModelPlugin: Plugin = {
-    commands: [LoadSampleSiteCommand],
+    commands: [ImportSiteDxfCommand, LoadSampleSiteCommand],
     ribbons: [
         {
             tabName: "ribbon.tab.manager" as RibbonTabKeys,
             groups: [
                 {
                     groupName: "ribbon.group.other" as RibbonGroupKeys,
-                    items: ["sitemodel.loadSample" as CommandKeys],
+                    items: ["sitemodel.import" as CommandKeys, "sitemodel.loadSample" as CommandKeys],
                 },
             ],
         },
@@ -34,7 +37,7 @@ const SiteModelPlugin: Plugin = {
     guide: [
         {
             name: "DGOC Site Model",
-            content: `Shared site model plugin for DGOC Crane Planner. Parses DXF site plans, extrudes 3D buildings, calibrates image underlays, edits site polygons, and manages hazards. Use the "Load Sample Site" button in the Manager tab to load synthetic buildings into the 3D scene and initialise site hazards in the store. ${REQUIRED_DISCLAIMER}`,
+            content: `Shared site model plugin for DGOC Crane Planner. Parses DXF site plans, extrudes 3D buildings, calibrates image underlays, edits site polygons, and manages hazards. Import Site DXF selects the shared site model for the active project; Tower Crane Planner then plans against that site instead of a fixed sample. Use Load Sample Site to load synthetic buildings into the 3D scene. ${REQUIRED_DISCLAIMER}`,
         },
     ],
     i18nResources: [
@@ -54,6 +57,13 @@ const SiteModelPlugin: Plugin = {
                 "site.model.building": "Site Building",
                 "site.model.buildingLabel": "Building Label",
                 "site.model.height": "Height (m)",
+                "sitemodel.import": "Import Site DXF",
+                "sitemodel.import.help":
+                    "Pick a .dxf site plan for the active project, parse and validate it through the shared site schema, and select it as the project's site model. Planning aid, not a certified lift plan.",
+                "sitemodel.import.success":
+                    "Site '{0}' selected for project '{1}'. Tower Crane Planner now uses this site.",
+                "sitemodel.import.failed":
+                    "Could not import site '{0}': {1}. The previously selected site was kept.",
             },
         } as unknown as Locale,
     ],

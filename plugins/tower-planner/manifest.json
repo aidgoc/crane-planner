@@ -1,7 +1,7 @@
 {
     "name": "DGOC Tower Crane Planner",
     "version": "0.1.0",
-    "description": "Sourced tower-crane catalogue, capacity check, placement, plan rings and clearance checks for the DGOC crane planner",
+    "description": "Sourced tower-crane catalogue, capacity check, placement, plan rings, oversail and height checks for the DGOC crane planner",
     "main": "dist/main.js",
     "css": "dist/main.css",
     "icon": "icons/tower.svg",
