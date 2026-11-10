@@ -112,12 +112,60 @@ The M1 chart values have been verified against the official Grove GMK5250L-1
 load-chart PDF, page 17. See [SOURCES.md](SOURCES.md) for the complete source
 record and the traceable page-17 transcription.
 
-## M3 Outrigger Pad Reactions
+## M3 Outrigger Pad Reactions & Footprint on Plan
 
 - **Inputs:** Total machine + load weight $W$, outrigger longitudinal spread $L$, and transverse spread $B$ are user inputs (no invented numbers).
-- **Statics:**
+- **Statics (CI-1):**
   - Symmetric load: $R_i = W / 4$ for all 4 pads (FL, FR, RL, RR).
   - Eccentric load ($e_x, e_y$): $R_i = W/4 \pm W \cdot e_x / (2L) \pm W \cdot e_y / (2B)$.
   - Matches hand moment balance $\sum F_z = W$, $\sum M_x = W \cdot e_y$, $\sum M_y = W \cdot e_x$.
-- **Stability:** A negative reaction flags pad uplift (tipping condition).
+  - Stability: A negative reaction flags pad uplift (tipping condition).
+- **Footprint on Plan (CI-2):**
+  - **2D Polygon & Coordinate Convention:** `getOutriggerFootprint()` computes the 4 pad coordinates and the closed 4-point counter-clockwise (CCW) polygon `[FL, RL, RR, FR]` around the crane centre:
+    - $+X$ = Longitudinal axis (forward / East at heading 0).
+    - $+Y$ = Transverse axis (left side / North at heading 0).
+    - Pad coordinates: $\text{FL}(+L/2, +B/2)$ [Quad 1], $\text{RL}(-L/2, +B/2)$ [Quad 2], $\text{RR}(-L/2, -B/2)$ [Quad 3], $\text{FR}(+L/2, -B/2)$ [Quad 4].
+    - Shoelace signed area $\frac{1}{2} \sum (x_i y_{i+1} - x_{i+1} y_i) = +L \cdot B > 0$, mathematically verifying counter-clockwise winding in standard Cartesian $(X, Y)$ space.
+    - *Screen/SVG Note:* In 2D raster/SVG coordinates where $+Y$ points downwards on screen, Cartesian CCW appears inverted unless the view matrix inverts $Y$.
+  - **Fail-Safe 3D CAD Visualization:** `MobileCraneBodyNode.generateShape()` renders the 4 outrigger pad plates on the ground plane ($Z = 0$) plus front and rear transverse extension beams connecting the pads across the chassis. If any pad plate, beam, or chassis component fails to build in the kernel, `generateShape()` immediately returns `Result.err(...)` rather than silently omitting components.
+  - **Polygon Data vs 3D Assembly:** `getFootprint().polygon` returns the 2D polygon data structure for clearance checks and report generation (M9/S7), while `generateShape()` builds the 3D physical solids for viewport display.
+  - **Live Synchronization:** `MobileCranePlacementPanel` updates `MobileCraneBodyNode.outriggerLengthSpreadM` and `outriggerWidthSpreadM` in real-time as the user adjusts the outrigger spread inputs.
 
+
+
+## M4 Ground Bearing vs User Allowable & Stability Verdict
+
+- **Ground bearing pressure:** $p = R / A$ where $R$ = pad reaction (t) and $A$ = pad area (m²). Converted to kPa via standard gravity $g = 9.80665$ kN/t.
+- **PASS/FAIL verdict:** If the user supplies an allowable soil bearing capacity $q_\text{allow}$ (t/m²), every pad is checked: $p \leq q_\text{allow}$ → PASS, $p > q_\text{allow}$ → FAIL. If no allowable is given, status is NOT_CHECKED.
+- **Tipping detection:** If any pad reaction $R_i < 0$, the verdict is FAIL with an explicit "tipping" keyword, regardless of bearing capacity. This satisfies the backlog requirement: *"a case where one pad reaction goes negative returns 'tipping'"*.
+- **UI Panel:** `createGroundBearingPanel()` provides a vanilla DOM panel with live inputs for pad area and allowable capacity. Inputs default to empty (requiring explicit site inputs, labeled `INDICATIVE` on screen to avoid unsourced assumptions) and display `NOT_CHECKED` until valid inputs are provided; clearing fields immediately reverts to `NOT_CHECKED`. Features a 4-pad grid with per-pad status badges, a reactive verdict banner, and the mandatory planning disclaimer.
+- **Sources:** All formulas are standard statics (no invented soil values). User-entered allowable is a parameter, not a hardcoded number. See [SOURCES.md](SOURCES.md).
+## M6 Boom Clearance to Site Obstacles
+
+- **3D Solids:** Crane boom is modelled as an extruded cylinder from pivot `(x, y, z)` with user-supplied radius $R$, length $L$, slew angle $\theta$, and elevation $\alpha$. Site buildings are extruded from 2D polygons into 3D prisms (`buildBuildingSolid`).
+- **Power Line Hazard:** Modelled as a conservative vertical face at the power line's `x_m` (sample site: $x = -9.0\,\text{m}$), spanning $\pm 200\,\text{m}$ in $Y$ and $0\text{--}200\,\text{m}$ in $Z$ (`buildPowerLineWall`). The real wire height is not in the site data, so the wall is taller than the wire. A boom that crosses the wall is reported `CRITICAL` with `isTouching = true` and `isCollision = false`.
+- **Clearance Query:** Evaluates Euclidean distance via OpenCASCADE `extremaDistance` and `booleanCommon`.
+- **Status Classification:**
+  - `SAFE`: $\text{distance} \ge \text{clearanceLimitM}$ (shown green)
+  - `WARNING`: $0 < \text{distance} < \text{clearanceLimitM}$ (shown red per BACKLOG rule)
+  - `CRITICAL`: Collision or touching ($\text{distance} = 0$, shown red)
+- **Verified Acceptance Test:** Boom $20\,\text{m}$, elevation $30^\circ$, slew $0^\circ$ from $(5, 31, 0)\,\text{m}$ gives $2.43\,\text{m}$ ($\pm 0.1\,\text{m}$) clearance to Tower A west face ($x = 25\,\text{m}$), verified by exact hand calculation.
+- **Fail-safe:** Empty site returns `worstCase = null`, preventing false `SAFE` indication. Input validation (`validateBoomPlacement`, `validateObstacleFootprint`, `validatePowerLineObstacle`) rejects invalid boom, building height, polygon, power-line position and clearance limit before the kernel runs, so bad data cannot produce a false `SAFE`.
+
+## M7 Swing Sweep
+
+`sweepSlew(factory, basePlacement, fromDeg, toDeg, stepDeg, buildings, powerLine?)` runs the M6 clearance check at every sampled slew angle between the pick and the set position, and reports the worst result over all angles and all obstacles (`worstStep`, `anyCollision`, one `SweepStep` per angle).
+
+- **Angles:** degrees, slew $0^\circ$ = east, counter-clockwise (same as M6). Both end angles are always sampled. Angles are **not wrapped**: $0^\circ \to 270^\circ$ sweeps $270^\circ$ and $350^\circ \to 10^\circ$ sweeps $340^\circ$ downwards. Pass the arc the boom really swings through.
+- **Step size:** BACKLOG M7 uses $2^\circ$ to $5^\circ$. A sweep may use at most `MAX_SWEEP_SAMPLES` (5000) angles (exactly 5000 is allowed); a smaller step throws `RangeError` before any geometry is built, because every sample is a full kernel check. `generateSlewAngles` checks its own inputs: a zero, negative, `NaN` or infinite step, or a non-finite angle, throws `RangeError`. The end angle is always the last sample, also for a very small sweep.
+- **Worst result:** the most severe status first (`CRITICAL`, then `WARNING`, then `SAFE`), then the smallest distance. No obstacles gives `worstStep = null`, never `SAFE`.
+- **Verified acceptance test:** boom $12\,\text{m}$ ($r = 0.5\,\text{m}$, horizontal) from $(10, 10, 0)\,\text{m}$, swept $0^\circ \to 90^\circ$ past Tower A. The boom is a cylinder, so the closest point is the rim of its flat end, $\sqrt{L^2 + r^2} = 12.0104\,\text{m}$ from the pivot, lined up with the Tower A corner $(25, 20)$, $D = \sqrt{15^2 + 10^2} = 18.0278\,\text{m}$ away. That gives $D - \sqrt{L^2 + r^2} = 6.017\,\text{m}$ at $31.3^\circ$ and at $36.1^\circ$. The kernel returns $6.0174\,\text{m}$ with a $2^\circ$ step ($36^\circ$) and $6.0230\,\text{m}$ with a $5^\circ$ step ($35^\circ$). The difference is $0.0056\,\text{m}$, inside the $0.10\,\text{m}$ tolerance.
+- **Between the samples:** the sweep samples the swing, it does not search it continuously, so a collision can fall between two samples. Every result therefore also says what is proved for the whole swing:
+  - `betweenSamplesAllowanceM` $= 2\sqrt{L^2 + r^2}\,\sin(\text{gap}/4)$: the most any boom point can move between a sample and the angle halfway to the next sample. The slew turns the boom about the vertical line through its foot, every boom point is at most $\sqrt{L^2 + r^2}$ from the foot, and a point at distance $d$ moves $2d\sin(\delta/2)$ when the slew turns by $\delta = \text{gap}/2$. The distance between two solids changes by at most that.
+  - `guaranteedMinDistanceM` $=$ smallest sampled distance $-$ allowance (lowest over all obstacles; can be negative).
+  - `sweepStatus`: `CRITICAL` if a sampled angle collides or touches; `SAFE` only if every obstacle has a guaranteed distance of at least its own limit and above $0$; otherwise `WARNING` (red), with the reason in `sweepStatusNote`. No obstacles gives `null`, never `SAFE`.
+  - Hand check, acceptance pose with a $5^\circ$ step: allowance $= 2 \cdot 12.0104 \cdot \sin(1.25^\circ) = 0.524\,\text{m}$, sampled minimum $6.023\,\text{m}$, guaranteed $5.50\,\text{m} \ge 2.0\,\text{m}$, so `SAFE`.
+  - Test example: a $20\,\text{m}$ boom tip reaching $1\,\text{cm}$ past a wall at $180^\circ$ is `CRITICAL` with a $1^\circ$ step. With a $5^\circ$ step the samples are $0.009\,\text{m}$ from the wall, and `sweepStatus` is `WARNING` (not `SAFE`), also when `clearanceLimitM` is $0$ and every sample reads `SAFE`. Use a smaller step to prove a small gap.
+  - `worstStep` and `anyCollision` still describe the sampled angles only.
+- **Memory:** CAD shapes live in the WASM heap and are not freed by the JavaScript garbage collector. `sweepSlew` builds the obstacle solids once (`prepareObstacles`), builds one boom solid per angle, and frees every solid it built (also when a check throws). `computeSiteClearance` frees its solids too. The intersection solid from the overlap test in `computeClearanceDistance` is freed. If you call `prepareObstacles` and `checkPreparedObstacles` yourself, call `dispose()` on the prepared obstacles when you are done.
+- **Function only.** The swing result is not shown in the UI yet.

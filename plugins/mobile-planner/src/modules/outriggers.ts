@@ -101,6 +101,44 @@ export type GroundBearingResult = {
     readonly disclaimer: typeof PLANNING_DISCLAIMER;
 };
 
+/**
+ * Result of evaluating ground bearing pressure and stability across all 4 outrigger pads.
+ * Implements M4 acceptance criteria:
+ * - Pad pressure = reaction / pad area vs allowable gives PASS/FAIL.
+ * - Any pad reaction going negative returns "tipping".
+ */
+export type AllPadsGroundBearingResult = {
+    readonly pads: {
+        readonly frontLeft: GroundBearingResult;
+        readonly frontRight: GroundBearingResult;
+        readonly rearLeft: GroundBearingResult;
+        readonly rearRight: GroundBearingResult;
+    };
+    /** Outrigger pad bearing the highest ground pressure. */
+    readonly peakPad: {
+        readonly id: OutriggerId;
+        readonly label: string;
+        readonly reactionT: number;
+        readonly pressureT_M2: number;
+        readonly pressureKPa: number;
+    };
+    /** Outrigger pad with the minimum reaction (used for uplift / tipping detection). */
+    readonly minPad: {
+        readonly id: OutriggerId;
+        readonly label: string;
+        readonly reactionT: number;
+    };
+    /** True if any pad reaction is strictly negative (uplift condition / machine tipping). */
+    readonly isTipping: boolean;
+    /** True if any pad pressure exceeds the specified user allowable bearing capacity. */
+    readonly isAllowableExceeded: boolean;
+    /** Overall status: FAIL if tipping or allowable exceeded, PASS if allowable met, NOT_CHECKED if no allowable given. */
+    readonly status: GroundBearingStatus;
+    /** Explicit verdict description for UI / logs / reports. Returns "tipping" when uplift is detected. */
+    readonly verdict: string;
+    readonly disclaimer: typeof PLANNING_DISCLAIMER;
+};
+
 function assertFiniteNumber(value: number, paramName: string): void {
     if (!Number.isFinite(value)) {
         throw new Error(`${paramName} must be a finite number`);
@@ -245,6 +283,22 @@ export function calculatePadReactionsFromLift(input: CraneLiftReactionsInput): P
 /**
  * Generates the outrigger footprint polygon coordinates on the site plan in metres.
  * Supports optional translation and rotation (heading).
+ *
+ * Coordinate Convention & Polygon Winding:
+ * - Longitudinal axis (+X forward, -X rear) along lengthSpreadM (L).
+ * - Transverse axis (+Y left, -Y right) along widthSpreadM (B).
+ * - Pad coordinates at heading 0:
+ *     FL: (+L/2, +B/2)  [Quadrant 1]
+ *     RL: (-L/2, +B/2)  [Quadrant 2]
+ *     RR: (-L/2, -B/2)  [Quadrant 3]
+ *     FR: (+L/2, -B/2)  [Quadrant 4]
+ * - The returned polygon loop [frontLeft, rearLeft, rearRight, frontRight] cycles
+ *   Quadrant 1 -> Quadrant 2 -> Quadrant 3 -> Quadrant 4.
+ * - In standard Cartesian (X, Y) space (where +Y points North/Up), the Green's theorem /
+ *   Shoelace signed area 0.5 * sum(x_i * y_{i+1} - x_{i+1} * y_i) is strictly POSITIVE (+L * B),
+ *   which mathematically defines counter-clockwise (CCW) winding.
+ *   (Note: in screen/SVG graphics where the Y axis points downwards, this translates to
+ *   a flipped visual orientation unless the view matrix inverts Y).
  */
 export function getOutriggerFootprint(options: {
     readonly lengthSpreadM: number;
@@ -328,6 +382,152 @@ export function calculateGroundBearing(
 }
 
 /**
+ * Evaluates ground bearing pressure and stability across all 4 outrigger pads.
+ * Implements M4 acceptance criteria:
+ * - Pad pressure = reaction / pad area vs allowable gives PASS/FAIL.
+ * - Any pad reaction going negative returns "tipping".
+ *
+ * Fail-safe & resilience:
+ * - Incomplete, zero, negative, or invalid padAreaM2 returns NOT_CHECKED (unless tipping is detected).
+ * - Missing or non-positive allowable capacity returns NOT_CHECKED (unless tipping is detected).
+ * - Tipping is detected directly from pad reactions and always returns FAIL: tipping.
+ */
+export function evaluateGroundBearingVerdict(
+    reactions: PadReactionsResult,
+    padAreaM2?: number,
+    allowableBearingCapacityT_M2?: number,
+): AllPadsGroundBearingResult {
+    const isPadAreaValid = padAreaM2 !== undefined && Number.isFinite(padAreaM2) && padAreaM2 > 0;
+    const isAllowableValid =
+        allowableBearingCapacityT_M2 !== undefined &&
+        Number.isFinite(allowableBearingCapacityT_M2) &&
+        allowableBearingCapacityT_M2 > 0;
+    const effectiveAllowable = isAllowableValid ? allowableBearingCapacityT_M2 : undefined;
+
+    let frontLeft: GroundBearingResult;
+    let frontRight: GroundBearingResult;
+    let rearLeft: GroundBearingResult;
+    let rearRight: GroundBearingResult;
+
+    if (isPadAreaValid) {
+        frontLeft = calculateGroundBearing(
+            reactions.reactions.frontLeft.reactionT,
+            padAreaM2,
+            effectiveAllowable,
+        );
+        frontRight = calculateGroundBearing(
+            reactions.reactions.frontRight.reactionT,
+            padAreaM2,
+            effectiveAllowable,
+        );
+        rearLeft = calculateGroundBearing(
+            reactions.reactions.rearLeft.reactionT,
+            padAreaM2,
+            effectiveAllowable,
+        );
+        rearRight = calculateGroundBearing(
+            reactions.reactions.rearRight.reactionT,
+            padAreaM2,
+            effectiveAllowable,
+        );
+    } else {
+        const createInvalidPadResult = (reactionT: number): GroundBearingResult => {
+            const padUplifted = reactionT < 0;
+            return {
+                reactionT,
+                padAreaM2: padAreaM2 ?? 0,
+                pressureT_M2: 0,
+                pressureKPa: 0,
+                allowableBearingCapacityT_M2: effectiveAllowable,
+                isAllowableExceeded: undefined,
+                status: padUplifted ? "FAIL" : "NOT_CHECKED",
+                disclaimer: PLANNING_DISCLAIMER,
+            };
+        };
+        frontLeft = createInvalidPadResult(reactions.reactions.frontLeft.reactionT);
+        frontRight = createInvalidPadResult(reactions.reactions.frontRight.reactionT);
+        rearLeft = createInvalidPadResult(reactions.reactions.rearLeft.reactionT);
+        rearRight = createInvalidPadResult(reactions.reactions.rearRight.reactionT);
+    }
+
+    const padList: Array<{ id: OutriggerId; label: string; res: GroundBearingResult }> = [
+        { id: "frontLeft", label: "Front-Left (FL)", res: frontLeft },
+        { id: "frontRight", label: "Front-Right (FR)", res: frontRight },
+        { id: "rearLeft", label: "Rear-Left (RL)", res: rearLeft },
+        { id: "rearRight", label: "Rear-Right (RR)", res: rearRight },
+    ];
+
+    let peak = padList[0];
+    let min = padList[0];
+    for (let i = 1; i < padList.length; i++) {
+        if (isPadAreaValid) {
+            if (padList[i].res.pressureT_M2 > peak.res.pressureT_M2) {
+                peak = padList[i];
+            }
+        } else {
+            if (padList[i].res.reactionT > peak.res.reactionT) {
+                peak = padList[i];
+            }
+        }
+        if (padList[i].res.reactionT < min.res.reactionT) {
+            min = padList[i];
+        }
+    }
+
+    const isTipping = !reactions.isStable || padList.some((p) => p.res.reactionT < 0);
+    const isAllowableExceeded =
+        effectiveAllowable !== undefined &&
+        isPadAreaValid &&
+        padList.some((p) => p.res.isAllowableExceeded === true);
+
+    let status: GroundBearingStatus;
+    let verdict: string;
+
+    if (isTipping) {
+        status = "FAIL";
+        verdict = `FAIL: tipping (pad uplift detected on ${min.label}, reaction = ${min.res.reactionT.toFixed(2)} t)`;
+    } else if (!isPadAreaValid) {
+        status = "NOT_CHECKED";
+        verdict = "NOT_CHECKED: Pad area (m²) must be specified and strictly greater than 0";
+    } else if (isAllowableExceeded) {
+        status = "FAIL";
+        verdict = `FAIL: allowable bearing capacity exceeded on ${peak.label} (${peak.res.pressureT_M2.toFixed(2)} t/m² > ${effectiveAllowable?.toFixed(2)} t/m²)`;
+    } else if (effectiveAllowable !== undefined) {
+        status = "PASS";
+        verdict = `PASS: Ground bearing within allowable limit (Peak: ${peak.res.pressureT_M2.toFixed(2)} t/m² ≤ ${effectiveAllowable.toFixed(2)} t/m²)`;
+    } else {
+        status = "NOT_CHECKED";
+        verdict = `NOT_CHECKED: Peak pressure ${peak.res.pressureT_M2.toFixed(2)} t/m² (no allowable capacity specified)`;
+    }
+
+    return {
+        pads: {
+            frontLeft,
+            frontRight,
+            rearLeft,
+            rearRight,
+        },
+        peakPad: {
+            id: peak.id,
+            label: peak.label,
+            reactionT: peak.res.reactionT,
+            pressureT_M2: peak.res.pressureT_M2,
+            pressureKPa: peak.res.pressureKPa,
+        },
+        minPad: {
+            id: min.id,
+            label: min.label,
+            reactionT: min.res.reactionT,
+        },
+        isTipping,
+        isAllowableExceeded,
+        status,
+        verdict,
+        disclaimer: PLANNING_DISCLAIMER,
+    };
+}
+
+/**
  * Formats a text summary of outrigger pad reactions suitable for UI panels or reports.
  */
 export function formatOutriggerSummary(result: PadReactionsResult): string {
@@ -342,6 +542,34 @@ export function formatOutriggerSummary(result: PadReactionsResult): string {
         `  RR: ${result.reactions.rearRight.reactionT.toFixed(2)} t\n` +
         `  Peak reaction: ${result.maxReactionT.toFixed(2)} t | Min reaction: ${result.minReactionT.toFixed(2)} t\n` +
         `  Status: ${stabilityText}\n` +
+        `${result.disclaimer}`
+    );
+}
+
+/**
+ * Formats a detailed summary of ground bearing results across all 4 pads including PASS/FAIL verdict.
+ */
+export function formatGroundBearingVerdictSummary(result: AllPadsGroundBearingResult): string {
+    const p = result.pads;
+    const formatPadPressure = (pad: GroundBearingResult): string => {
+        if (pad.padAreaM2 <= 0) {
+            return `— t/m² [${pad.status}]`;
+        }
+        return `${pad.pressureT_M2.toFixed(2)} t/m² (${pad.pressureKPa.toFixed(2)} kPa) [${pad.status}]`;
+    };
+    const peakPressureText =
+        result.peakPad.pressureT_M2 > 0
+            ? `${result.peakPad.label} @ ${result.peakPad.pressureT_M2.toFixed(2)} t/m²`
+            : `${result.peakPad.label} (pressure unavailable)`;
+
+    return (
+        `Ground Bearing Assessment:\n` +
+        `  FL: ${formatPadPressure(p.frontLeft)}\n` +
+        `  FR: ${formatPadPressure(p.frontRight)}\n` +
+        `  RL: ${formatPadPressure(p.rearLeft)}\n` +
+        `  RR: ${formatPadPressure(p.rearRight)}\n` +
+        `  Peak Pressure: ${peakPressureText}\n` +
+        `  Verdict: ${result.verdict}\n` +
         `${result.disclaimer}`
     );
 }
