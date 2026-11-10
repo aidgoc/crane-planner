@@ -16,7 +16,8 @@ page number is found later, record it alongside the PDF index.
 
 | Crane | Document | Pages | What it supplies |
 | --- | --- | --- | --- |
-| Potain MCT 88 | Potain MCT 88 Data Sheet, FEM 1.001-A3 (Manitowoc, Potain ref. `02D_FEM1001mt_MCT88_2006_40-21`, printed as "Réf." on p. 8), 8-page PDF, file `02D_FEM1001mt_MCT88_2006_40-21.pdf` at `plugins/tower-planner/docs/02D_FEM1001mt_MCT88_2006_40-21.pdf` | pp. 1, 2, 4, 6; local load curves p. 4 (Cycle 2 mirrored copy recorded p. 3, unresolved) | 5 t maximum, 52 m maximum working jib (53.1 m overall tip length), p. 4 upper 5 t hook load chart (8 jib lengths, 86 points) and lower 3 t hook table, p. 1 summary labels, p. 2 P12D height under hook and ZC 2030 base width, dimensions and component weights |
+| Potain MCT 88 | `02D_FEM1001mt_MCT88_2006_40-21.pdf` — Potain MCT 88 technical documentation, 2006 edition | pp. 1, 2, 4, 6 (FEM 1.001-A3 printed on all 8 pages) | Original source used for the MCT 88 load-chart values. The PDF identifies FEM 1.001-A3 as the applicable standard. |
+| Potain MCT 88 | `02D_EN14439C25D25_MCT88_2009_36-14` — Potain MCT 88 technical documentation, 2009 edition | p. 4 | Independently checked by Sir against page 4 of the 2006 edition. All 86 load-chart points in the upper 5 t hook table match the corresponding values in the 2006 edition. |
 | Potain MCT 85 F5 | Potain MCT 85 F5 Data Sheet, FEM 1.001-A3 (Manitowoc, Ref. `02D_FEM1001mt_MCT85F5_2026_05-0`), copyright 2026 Manitowoc, 8 pages | pp. 1, 2, 3, 5 | 5 t maximum, 52 m maximum working jib, per-radius load curves for 8 jib lengths, p. 2 P12D height under hook and ZF 12A base width, counter-jib dimensions and masses |
 | Jaso J438PA.2R | Jaso J438PA.2R tower-crane brochure, EN 14439 C25 / FEM 1005-C25, dated 30/05/2025 (PDF metadata title `HT212.01.1.01`), 7 pages | pp. 1, 2, 6 (packing list continues on p. 7) | Luffing-jib configurations, H height without fastening, imperial TD/2R load charts, transport packing list |
 
@@ -29,26 +30,13 @@ The MCT 88 PDF is present in this working tree at
 (`.gitignore` excludes `plugins/tower-planner/docs/*.pdf`). The MCT 88, MCT 85 F5 and Jaso PDFs are
 all in `plugins/tower-planner/docs/`.
 
-**Inspected MCT 88 edition.** The load-chart values were read from exactly one MCT 88 edition: file
-`02D_FEM1001mt_MCT88_2006_40-21.pdf`, Potain reference `02D_FEM1001mt_MCT88_2006_40-21` (printed as
-`Réf. 02D_FEM1001mt_MCT88_2006_40-21` on p. 8). That PDF prints **FEM 1.001-A3** on every one of its
-8 pages and does **not** print EN 14439 C25-D25 (or EN 14439, or C25) anywhere. Earlier versions of this
-file and the catalogue cited "Code 09-003-.5M-0610"; that code is not printed in the inspected PDF and
-is no longer used.
+**Inspected MCT 88 source edition:** `02D_FEM1001mt_MCT88_2006_40-21.pdf` (Potain reference: `02D_FEM1001mt_MCT88_2006_40-21`). The document identifies FEM 1.001-A3 on all eight pages. This is the original source used for the MCT 88 catalogue values transcribed into the project.
 
-**External claim, not verified.** The `datasheetOverview.url` stored in the JSON is
-<https://www.manitowoc.com/potain-ecatalog-en14439-c25d25.html>. Its address contains the text
-`en14439-c25d25`, which suggests an EN 14439 C25-D25 reference for the MCT 88, but the page could not be
-read (the e-catalogue blocks automated access), so its content was not seen. It is recorded here only
-as an external pointer; it is **not** evidence from the local PDF and is **not** verified by it.
+**Independently verified MCT 88 edition:** `02D_EN14439C25D25_MCT88_2009_36-14` (EN 14439 C25-D25). Sir checked all 86 load-chart points on page 4 against the corresponding upper 5 t hook table in the 2006 edition. All 86 values match.
 
-**Reviewer-reported second edition, not inspected.** The PR reviewer reports a different MCT 88
-edition, Potain ref. `02D_EN14439C25D25_MCT88_2009_36-14`, which they state prints EN 14439 C25-D25 on
-every page and carries no FEM 1.001-A3 marking. This project has not inspected that file, it is not in
-the repository, and no value in the catalogue is taken from it. The two editions are separate
-documents: what one prints says nothing about the other, and FEM 1.001-A3 on the inspected edition is
-not claimed to be the only or definitive standard for every MCT 88 edition. If values are later checked
-against that edition, record its file name, Potain reference and any differences here.
+The 2009 edition serves as an independent verification of the chart values; it is not the original source from which the project values were transcribed. The original source remains the 2006 FEM 1.001-A3 edition.
+
+The external e-catalogue reference remains inaccessible for direct inspection. However, the separate 2009 edition has been checked independently as described above.
 
 ### PDF checksums
 
@@ -100,22 +88,7 @@ was verified from the documents themselves.
 | Counter-jib mass | 4.38 t (variant A); 4.25 t (variant B) | datasheet p. 6 |
 | Cab mass | 1.10 t | datasheet p. 6 |
 
-**Standard attribution.** The catalogue's `standard` field for the MCT 88 records the standard printed on
-the inspected source document, the same convention used for the MCT 85 F5 and the Jaso entries. For
-the inspected edition (`02D_FEM1001mt_MCT88_2006_40-21.pdf`, Potain ref.
-`02D_FEM1001mt_MCT88_2006_40-21`) that is **FEM 1.001-A3**, printed on all eight pages. The same PDF
-does **not** print EN 14439 C25-D25. This is a statement about that edition only; it is not claimed to
-be the only or definitive standard for every MCT 88 edition.
-
-EN 14439 C25-D25 appears for the MCT 88 only in two places that are **not** the inspected PDF: the
-address of the external e-catalogue URL (`potain-ecatalog-en14439-c25d25.html`, the
-`datasheetOverview.url` in the catalogue JSON; page content unread), and the PR reviewer's report of a
-different edition (`02D_EN14439C25D25_MCT88_2009_36-14`, not inspected). Both are recorded as separate,
-unverified external claims. Earlier text and the earlier `standard` value `EN 14439 C25` presented that
-reference as the applicable standard for the inspected PDF; that is withdrawn, because nothing in the
-inspected PDF supports it. Which standard should be shown to users for the MCT 88, and whether the
-capacity data should be re-checked against the EN 14439 C25-D25 edition, remains a question for mentor
-confirmation.
+**Standard attribution:** The `standard` field remains `FEM 1.001-A3` because the project values were transcribed from the 2006 MCT 88 document, which identifies this standard. The 2009 edition, identified as EN 14439 C25-D25, is documented separately as an independent verification. Sir confirmed that all 86 load-chart points on page 4 match the corresponding values in the 2006 edition.
 
 The p. 2 P12D table labels **43.1 m** as a height under hook. It is stored in `heightUnderHookM` with
 that meaning. It is **not** a freestanding-height limit, and `freestandingHeightM` is `notStated`
