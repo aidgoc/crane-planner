@@ -28,8 +28,9 @@ The MCT 88 PDF is present in this working tree at
 `plugins/tower-planner/docs/02D_FEM1001mt_MCT88_2006_40-21.pdf` but is **ignored by Git and untracked**
 (`.gitignore` excludes `plugins/tower-planner/docs/*.pdf`). The e-catalogue URL stored in the JSON is
 <https://www.manitowoc.com/potain-ecatalog-en14439-c25d25.html>; the load-chart values were read from
-the PDF copy because the e-catalogue blocks automated access. The e-catalogue identifies
-**EN 14439 C25**, while the PDF prints **FEM 1.001-A3**; §3.1 records the distinction. The MCT 88,
+the PDF copy because the e-catalogue blocks automated access. The e-catalogue URL cites
+**EN 14439 C25-D25** as the applicable standards reference for the MCT 88, while the PDF itself
+prints **FEM 1.001-A3**; §3.1 records both statements separately. The MCT 88,
 MCT 85 F5 and Jaso PDFs are all in `plugins/tower-planner/docs/`.
 
 ### PDF checksums
@@ -68,7 +69,7 @@ was verified from the documents themselves.
 
 | Field | Value | Provenance |
 | --- | --- | --- |
-| Catalogue standard | EN 14439 C25 | e-catalogue URL; the inspected PDF prints FEM 1.001-A3 on all 8 pages, not EN 14439 C25 |
+| Catalogue standard | EN 14439 C25-D25 | Applicable standards reference; e-catalogue URL `potain-ecatalog-en14439-c25d25.html`. The inspected PDF prints FEM 1.001-A3 on all 8 pages and does not print EN 14439 C25-D25. |
 | Maximum capacity | 5 t | datasheet p. 1 |
 | Maximum working jib | 52 m | datasheet p. 1; confirmed by the p. 4 curves and p. 5 jib-weight table, which both stop at 52 m |
 | Overall tip length | 53.1 m | datasheet p. 1 drawing; **not** a working jib configuration |
@@ -82,12 +83,13 @@ was verified from the documents themselves.
 | Counter-jib mass | 4.38 t (variant A); 4.25 t (variant B) | datasheet p. 6 |
 | Cab mass | 1.10 t | datasheet p. 6 |
 
-**Standard attribution.** The catalogue `standard` field is **EN 14439 C25**, associated with the
-e-catalogue URL `potain-ecatalog-en14439-c25d25.html`. The inspected 8-page reference PDF is titled
-`Potain MCT 88 Data Sheet, FEM 1.001-A3 ...` and prints **FEM 1.001-A3** on all eight pages; it does
-not print EN 14439 C25. Both source statements are recorded separately and are **not** claimed to be
-equivalent. Which standard the `standard` field should represent remains pending mentor confirmation;
-the field value is unchanged.
+**Standard attribution.** The applicable standards reference for the MCT 88 is **EN 14439 C25-D25**,
+cited from the e-catalogue URL `potain-ecatalog-en14439-c25d25.html` (the `datasheetOverview.url` in
+the catalogue JSON). The catalogue JSON's `standard` field records the short form `EN 14439 C25`; the
+full applicable reference is C25-D25. The inspected 8-page reference PDF is titled
+`Potain MCT 88 Data Sheet, FEM 1.001-A3 ...` and prints **FEM 1.001-A3** on all eight pages. The PDF
+does not print `EN 14439 C25-D25`; its `FEM 1.001-A3` marking is recorded separately as the standard
+actually printed in the PDF.
 
 The p. 2 P12D table labels **43.1 m** as a height under hook. It is stored in `heightUnderHookM` with
 that meaning. It is **not** a freestanding-height limit, and `freestandingHeightM` is `notStated`
