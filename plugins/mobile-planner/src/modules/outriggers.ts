@@ -283,6 +283,22 @@ export function calculatePadReactionsFromLift(input: CraneLiftReactionsInput): P
 /**
  * Generates the outrigger footprint polygon coordinates on the site plan in metres.
  * Supports optional translation and rotation (heading).
+ *
+ * Coordinate Convention & Polygon Winding:
+ * - Longitudinal axis (+X forward, -X rear) along lengthSpreadM (L).
+ * - Transverse axis (+Y left, -Y right) along widthSpreadM (B).
+ * - Pad coordinates at heading 0:
+ *     FL: (+L/2, +B/2)  [Quadrant 1]
+ *     RL: (-L/2, +B/2)  [Quadrant 2]
+ *     RR: (-L/2, -B/2)  [Quadrant 3]
+ *     FR: (+L/2, -B/2)  [Quadrant 4]
+ * - The returned polygon loop [frontLeft, rearLeft, rearRight, frontRight] cycles
+ *   Quadrant 1 -> Quadrant 2 -> Quadrant 3 -> Quadrant 4.
+ * - In standard Cartesian (X, Y) space (where +Y points North/Up), the Green's theorem /
+ *   Shoelace signed area 0.5 * sum(x_i * y_{i+1} - x_{i+1} * y_i) is strictly POSITIVE (+L * B),
+ *   which mathematically defines counter-clockwise (CCW) winding.
+ *   (Note: in screen/SVG graphics where the Y axis points downwards, this translates to
+ *   a flipped visual orientation unless the view matrix inverts Y).
  */
 export function getOutriggerFootprint(options: {
     readonly lengthSpreadM: number;
