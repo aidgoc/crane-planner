@@ -3,6 +3,7 @@
     "version": "0.1.0",
     "description": "Mobile crane load-chart and lift-planning aid",
     "main": "dist/main.js",
+    "css": "dist/main.css",
     "author": {
         "name": "DGOC Crane Planner"
     },
