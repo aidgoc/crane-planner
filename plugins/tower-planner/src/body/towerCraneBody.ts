@@ -94,8 +94,8 @@ export class TowerCraneBodyNode extends ParameterShapeNode {
     generateShape(): Result<IShape> {
         const crane = this._crane;
         const jibLengthMm = metresToMillimetres(this.jibLengthM);
-        const mastWidthMm = metresToMillimetres(crane.dimensions.mastWidthM.value);
-        const counterJibLengthMm = metresToMillimetres(crane.dimensions.counterJibLengthM.value);
+        const mastWidthMm = metresToMillimetres((crane.dimensions.mastWidthM as any).value);
+        const counterJibLengthMm = metresToMillimetres((crane.dimensions.counterJibLengthM as any).value);
         const mastHeightMm = metresToMillimetres(this.mastHeightM);
 
         // Cross-section dimensions (INDICATIVE)

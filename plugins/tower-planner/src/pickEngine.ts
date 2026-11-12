@@ -5,14 +5,32 @@ import { capacityAt, publishedMaxJibM } from "./capacity";
 import type { CapacityModel } from "./types";
 
 /**
+ * A horizontal site coordinate in metres. Supply, drop and mast must all use
+ * the same site frame; the engine does not assume a particular origin.
+ */
+export type PickPoint = {
+    x: number;
+    y: number;
+};
+
+/**
  * One lift to check. `loadT` is the total suspended load in tonnes (the caller
- * should include rigging in this value); `radiusM` is the hook radius in metres.
- * All engine calculations stay in metres and tonnes; conversion to millimetres
- * belongs at the Chili3D scene boundary, not here.
+ * should include rigging in this value). A pick may either name its supply and
+ * drop points or carry a legacy hook radius; coordinates take precedence when
+ * both are present. All engine calculations stay in metres and tonnes;
+ * conversion to millimetres belongs at the Chili3D scene boundary, not here.
  */
 export type Pick = {
     loadT: number;
-    radiusM: number;
+    /** Horizontal pick-up (supply) point. */
+    supply?: PickPoint;
+    /** Horizontal set-down (drop) point. */
+    drop?: PickPoint;
+    /**
+     * Legacy radius-only input, retained for callers that already know the hook
+     * radius. Ignored when supply/drop coordinates are supplied.
+     */
+    radiusM?: number;
     label?: string;
     /**
      * Per-pick wind override. `undefined` falls back to the crane-level wind
@@ -21,20 +39,49 @@ export type Pick = {
     windKmh?: number | null;
 };
 
+/** Which input produced the governing hook radius. */
+export type PickRadiusSource = "supply" | "drop" | "legacy";
+
+export type PickRadiusIssue =
+    | "missing-location"
+    | "missing-coordinate"
+    | "invalid-coordinate"
+    | "invalid-mast"
+    | "invalid-radius";
+
+export type PickRadiusResolution =
+    | {
+          ok: true;
+          radiusM: number;
+          supplyRadiusM: number | null;
+          dropRadiusM: number | null;
+          governing: PickRadiusSource;
+      }
+    | {
+          ok: false;
+          issue: PickRadiusIssue;
+      };
+
 export type PickEvaluationOptions = {
     /** Installed jib length in metres. Defaults to the catalogue's `defaultJibM`. */
     jibM?: number;
     windKmh?: number | null;
+    /**
+     * Crane mast position. Required for supply/drop picks; legacy radius picks
+     * ignore it. There is deliberately no default mast position.
+     */
+    mast?: PickPoint;
 };
 
 export type PickIssue =
+    | PickRadiusIssue
     | "invalid-load"
-    | "invalid-radius"
     | "invalid-wind"
     | "jib-outside-published-range"
-    | "invalid-capacity";
+    | "invalid-capacity"
+    | "unsupported-crane-type";
 
-export type PickStatus = "PASS" | "FAIL" | "OUT_OF_RANGE" | "INVALID";
+export type PickStatus = "PASS" | "FAIL" | "OUT_OF_RANGE" | "INVALID" | "UNSUPPORTED";
 
 export type PickEvaluation = {
     craneId: string;
@@ -42,7 +89,11 @@ export type PickEvaluation = {
     label: string;
     jibM: number;
     loadT: number;
-    radiusM: number;
+    /** Governing hook radius; null when the pick has no valid location. */
+    radiusM: number | null;
+    supplyRadiusM: number | null;
+    dropRadiusM: number | null;
+    governing: PickRadiusSource | null;
     windKmh: number | null;
     capacityT: number | null;
     utilisationPct: number | null;
@@ -58,6 +109,8 @@ export type CraneEvaluation = {
     picks: PickEvaluation[];
     allPass: boolean;
     failedCount: number;
+    /** True when the crane type is outside this engine (luffing-jib). */
+    unsupported: boolean;
 };
 
 export type FindCranesOptions = PickEvaluationOptions & {
@@ -68,25 +121,68 @@ export type FindCranesOptions = PickEvaluationOptions & {
 const JIB_TOLERANCE_M = 1e-9;
 const CHART_JIB_TOLERANCE_M = 1e-6;
 
-function invalid(
-    crane: CapacityModel,
-    pick: Pick,
-    jibM: number,
-    windKmh: number | null,
-    issue: PickIssue,
-): PickEvaluation {
+function isFinitePoint(point: PickPoint | undefined): point is PickPoint {
+    return point !== undefined && Number.isFinite(point.x) && Number.isFinite(point.y);
+}
+
+function resolveCoordinateRadius(pick: Pick, mast: PickPoint | undefined): PickRadiusResolution {
+    if (pick.supply === undefined || pick.drop === undefined) {
+        return { ok: false, issue: "missing-coordinate" };
+    }
+
+    if (!isFinitePoint(pick.supply) || !isFinitePoint(pick.drop)) {
+        return { ok: false, issue: "invalid-coordinate" };
+    }
+
+    if (!isFinitePoint(mast)) {
+        return { ok: false, issue: "invalid-mast" };
+    }
+
+    const supplyRadiusM = Math.hypot(pick.supply.x - mast.x, pick.supply.y - mast.y);
+    const dropRadiusM = Math.hypot(pick.drop.x - mast.x, pick.drop.y - mast.y);
+
+    // `Math.hypot` can overflow to Infinity for enormous finite coordinates.
+    if (!Number.isFinite(supplyRadiusM) || !Number.isFinite(dropRadiusM)) {
+        return { ok: false, issue: "invalid-coordinate" };
+    }
+
+    // The larger radius governs the lift; a tie is reported as supply.
+    const governing = dropRadiusM > supplyRadiusM ? "drop" : "supply";
+    const radiusM = Math.max(supplyRadiusM, dropRadiusM);
+
+    if (radiusM <= 0) {
+        return { ok: false, issue: "invalid-radius" };
+    }
+
+    return { ok: true, radiusM, supplyRadiusM, dropRadiusM, governing };
+}
+
+/**
+ * Resolve the hook radius for one pick.
+ *
+ * Supply/drop coordinates take precedence over a legacy `radiusM`. A coordinate
+ * pick needs both points and a mast position; missing or non-finite values are
+ * rejected instead of being replaced by zero or an assumed mast location.
+ */
+export function resolvePickRadius(pick: Pick, mast: PickPoint | undefined): PickRadiusResolution {
+    if (pick.supply !== undefined || pick.drop !== undefined) {
+        return resolveCoordinateRadius(pick, mast);
+    }
+
+    if (pick.radiusM === undefined) {
+        return { ok: false, issue: "missing-location" };
+    }
+
+    if (!Number.isFinite(pick.radiusM) || pick.radiusM <= 0) {
+        return { ok: false, issue: "invalid-radius" };
+    }
+
     return {
-        craneId: crane.id,
-        craneName: crane.name,
-        label: pick.label ?? "",
-        jibM,
-        loadT: pick.loadT,
+        ok: true,
         radiusM: pick.radiusM,
-        windKmh,
-        capacityT: null,
-        utilisationPct: null,
-        status: "INVALID",
-        issue,
+        supplyRadiusM: null,
+        dropRadiusM: null,
+        governing: "legacy",
     };
 }
 
@@ -131,37 +227,82 @@ export function evaluatePick(
 ): PickEvaluation {
     const jibM = options.jibM ?? crane.defaultJibM.value;
     const windKmh = pick.windKmh !== undefined ? pick.windKmh : (options.windKmh ?? null);
+    const resolution = resolvePickRadius(pick, options.mast);
 
-    if (!Number.isFinite(pick.loadT) || pick.loadT <= 0) {
-        return invalid(crane, pick, jibM, windKmh, "invalid-load");
+    const base = {
+        craneId: crane.id,
+        craneName: crane.name,
+        label: pick.label ?? "",
+        jibM,
+        loadT: pick.loadT,
+        radiusM: resolution.ok ? resolution.radiusM : null,
+        supplyRadiusM: resolution.ok ? resolution.supplyRadiusM : null,
+        dropRadiusM: resolution.ok ? resolution.dropRadiusM : null,
+        governing: resolution.ok ? resolution.governing : null,
+        windKmh,
+    } as const;
+
+    // The crane type is checked before the pick values: a luffing-jib entry is
+    // outside this engine regardless of whether the individual pick is valid,
+    // and the UI must not show a capacity result for it.
+    if (crane.craneType === "luffing-jib") {
+        return {
+            ...base,
+            capacityT: null,
+            utilisationPct: null,
+            status: "UNSUPPORTED",
+            issue: "unsupported-crane-type",
+        };
     }
 
-    if (!Number.isFinite(pick.radiusM) || pick.radiusM <= 0) {
-        return invalid(crane, pick, jibM, windKmh, "invalid-radius");
+    if (!Number.isFinite(pick.loadT) || pick.loadT <= 0) {
+        return {
+            ...base,
+            capacityT: null,
+            utilisationPct: null,
+            status: "INVALID",
+            issue: "invalid-load",
+        };
+    }
+
+    if (!resolution.ok) {
+        return {
+            ...base,
+            capacityT: null,
+            utilisationPct: null,
+            status: "INVALID",
+            issue: resolution.issue,
+        };
     }
 
     // `null`/`undefined` means "no wind derate"; any supplied wind value must
     // be a finite, non-negative number. Rejecting it here gives the caller a
     // specific issue instead of silently treating bad input as calm weather.
     if (windKmh !== null && (!Number.isFinite(windKmh) || windKmh < 0)) {
-        return invalid(crane, pick, jibM, windKmh, "invalid-wind");
+        return {
+            ...base,
+            capacityT: null,
+            utilisationPct: null,
+            status: "INVALID",
+            issue: "invalid-wind",
+        };
     }
 
     if (!isPublishedJib(crane, jibM)) {
-        return invalid(crane, pick, jibM, windKmh, "jib-outside-published-range");
+        return {
+            ...base,
+            capacityT: null,
+            utilisationPct: null,
+            status: "INVALID",
+            issue: "jib-outside-published-range",
+        };
     }
 
-    const capacityT = capacityAt(crane, jibM, pick.radiusM, windKmh);
+    const capacityT = capacityAt(crane, jibM, resolution.radiusM, windKmh);
 
     if (capacityT === null) {
         return {
-            craneId: crane.id,
-            craneName: crane.name,
-            label: pick.label ?? "",
-            jibM,
-            loadT: pick.loadT,
-            radiusM: pick.radiusM,
-            windKmh,
+            ...base,
             capacityT: null,
             utilisationPct: null,
             status: "OUT_OF_RANGE",
@@ -169,19 +310,19 @@ export function evaluatePick(
     }
 
     if (!Number.isFinite(capacityT) || capacityT <= 0) {
-        return invalid(crane, pick, jibM, windKmh, "invalid-capacity");
+        return {
+            ...base,
+            capacityT: null,
+            utilisationPct: null,
+            status: "INVALID",
+            issue: "invalid-capacity",
+        };
     }
 
     const utilisationPct = (pick.loadT / capacityT) * 100;
 
     return {
-        craneId: crane.id,
-        craneName: crane.name,
-        label: pick.label ?? "",
-        jibM,
-        loadT: pick.loadT,
-        radiusM: pick.radiusM,
-        windKmh,
+        ...base,
         capacityT,
         utilisationPct,
         status: pick.loadT <= capacityT ? "PASS" : "FAIL",
@@ -198,7 +339,9 @@ export function evaluateCrane(
     options: PickEvaluationOptions = {},
 ): CraneEvaluation {
     const jibM = options.jibM ?? crane.defaultJibM.value;
-    const evaluations = picks.map((pick) => evaluatePick(crane, pick, { jibM, windKmh: options.windKmh }));
+    const evaluations = picks.map((pick) =>
+        evaluatePick(crane, pick, { jibM, windKmh: options.windKmh, mast: options.mast }),
+    );
     const failedCount = evaluations.filter((evaluation) => evaluation.status !== "PASS").length;
 
     return {
@@ -209,7 +352,28 @@ export function evaluateCrane(
         picks: evaluations,
         allPass: evaluations.length > 0 && failedCount === 0,
         failedCount,
+        unsupported: crane.craneType === "luffing-jib",
     };
+}
+
+/**
+ * Evaluate a pick list against every crane, applying any per-crane jib
+ * override. This is the shared row builder for catalogue-wide views: the
+ * selection matrix and `findCranesPassingAllPicks` both use it, so they cannot
+ * disagree about which cranes pass.
+ */
+export function evaluateCranes(
+    cranes: readonly CapacityModel[],
+    picks: readonly Pick[],
+    options: FindCranesOptions = {},
+): CraneEvaluation[] {
+    return cranes.map((crane) =>
+        evaluateCrane(crane, picks, {
+            jibM: options.jibMByCrane?.[crane.id] ?? options.jibM,
+            windKmh: options.windKmh,
+            mast: options.mast,
+        }),
+    );
 }
 
 /**
@@ -222,12 +386,5 @@ export function findCranesPassingAllPicks(
     picks: readonly Pick[],
     options: FindCranesOptions = {},
 ): CraneEvaluation[] {
-    return cranes
-        .map((crane) =>
-            evaluateCrane(crane, picks, {
-                jibM: options.jibMByCrane?.[crane.id] ?? options.jibM,
-                windKmh: options.windKmh,
-            }),
-        )
-        .filter((evaluation) => evaluation.allPass);
+    return evaluateCranes(cranes, picks, options).filter((evaluation) => evaluation.allPass);
 }

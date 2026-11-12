@@ -149,19 +149,22 @@ function chartCapacityAt(chart: JibLoadChart, radiusM: number): number | null {
 }
 
 /**
- * Cycle 2 `capacityAt` behaviour preserved for valid inputs on tip-load models:
+ * `capacityAt` behaviour for valid inputs on tip-load models:
  *   radius > jib              -> null
- *   radius <= 0               -> maximum capacity
+ *   radius <= 0               -> null (invalid geometry)
  *   radius <= corner radius   -> maximum capacity
  *   radius >  corner radius   -> moment / radius
  * When a model carries a `loadChart`, the chart is used instead and the
  * requested jib must be one of its published configurations. Optional wind
  * derating is applied once to the final base capacity and is labelled SIMULATED
  * (see `WIND_DERATE_RULE`). `null`/`undefined` wind means no derate; negative or
- * non-finite wind is invalid and returns `null`. Invalid/non-finite geometry
- * also returns null instead of a NaN, so callers cannot accidentally render a
- * numeric capacity. A jib above the model's published maximum (or above its
- * last published tip-load/chart row) returns `null` before any interpolation.
+ * non-finite wind is invalid and returns `null`. Invalid geometry (non-finite,
+ * zero, or negative radius) also returns null instead of a NaN, so callers
+ * cannot accidentally render a numeric capacity. A jib above the model's
+ * published maximum (or above its last published tip-load/chart row) returns
+ * `null` before any interpolation. A model marked `craneType: "luffing-jib"`
+ * returns `null` immediately: the trolley-jib rules below do not describe
+ * luffing geometry.
  */
 export function capacityAt(
     model: CapacityModel,
@@ -169,12 +172,17 @@ export function capacityAt(
     radiusM: number,
     windKmh?: number | null,
 ): number | null {
+    // Luffing-jib geometry (variable radius at a fixed luff angle) is not the
+    // trolley-jib model this engine implements. Refuse rather than returning a
+    // plausible but wrong capacity.
+    if (model.craneType === "luffing-jib") return null;
+
     if (!Number.isFinite(jibM) || jibM <= 0) return null;
 
     const maxJibM = publishedMaxJibM(model);
     if (maxJibM === undefined || jibM > maxJibM + MAX_JIB_TOLERANCE_M) return null;
 
-    if (!Number.isFinite(radiusM)) return null;
+    if (!Number.isFinite(radiusM) || radiusM <= 0) return null;
     if (radiusM > jibM) return null;
     if (model.tipLoadByJib.length === 0) return null;
 
@@ -189,8 +197,6 @@ export function capacityAt(
         const chartCapacity = chartCapacityAt(chart, radiusM);
         if (chartCapacity === null) return null;
         base = chartCapacity;
-    } else if (radiusM <= 0) {
-        base = maxCapacityT;
     } else {
         const moment = momentAt(model, jibM);
         const cornerRadius = moment / maxCapacityT;
