@@ -251,8 +251,9 @@ export function generateSlewAngles(fromDeg: number, toDeg: number, stepDeg: numb
  * solids changes by at most the distance the boom points move, so the real
  * clearance at any angle is at least (sampled clearance) - (this value).
  */
-export function betweenSamplesAllowanceM(boom: BoomPlacement, maxGapDeg: number): number {
-    const reachM = Math.hypot(boom.boomLengthM, boom.boomRadiusM);
+export function betweenSamplesAllowanceM(boom: BoomPlacement, maxGapDeg: number, footOffsetM = 0): number {
+    // Farthest boom point from the slew axis: the foot offset plus the farthest point from the foot.
+    const reachM = footOffsetM + Math.hypot(boom.boomLengthM, boom.boomRadiusM);
     const deltaRad = Math.min(((maxGapDeg / 2) * Math.PI) / 180, Math.PI);
     return 2 * reachM * Math.sin(deltaRad / 2);
 }
@@ -290,6 +291,10 @@ export function betweenSamplesAllowanceM(boom: BoomPlacement, maxGapDeg: number)
  * @param stepDeg - Slew increment in degrees (must be > 0).
  * @param buildings - Building footprints from the site model.
  * @param powerLine - Optional power-line obstacle.
+ * @param footOffsetM - Distance (m, >= 0, default 0) of the boom foot from the slew axis in the slew
+ *   direction. With 0 the pivot of `basePlacement` is on the slew axis and does not move. With an offset,
+ *   `basePlacement.pivotM` is the slew axis point and the foot at each angle is that point plus the offset
+ *   along the slew direction, like the crane's real boom foot.
  * @returns SwingSweepReport.
  *
  * Planning aid, not a certified lift plan.
@@ -302,8 +307,12 @@ export function sweepSlew(
     stepDeg: number,
     buildings: ObstacleFootprint[],
     powerLine?: PowerLineObstacle,
+    footOffsetM = 0,
 ): SwingSweepReport {
     validateSweepParams(basePlacement, fromDeg, toDeg, stepDeg);
+    if (!Number.isFinite(footOffsetM) || footOffsetM < 0) {
+        throw new RangeError(`sweepSlew: footOffsetM must be >= 0 and finite (got ${footOffsetM}).`);
+    }
 
     const angles = generateSlewAngles(fromDeg, toDeg, stepDeg);
     const steps: SweepStep[] = [];
@@ -320,7 +329,16 @@ export function sweepSlew(
     const obstacles = prepareObstacles(factory, buildings, powerLine);
     try {
         for (const angle of angles) {
-            const placement: BoomPlacement = { ...basePlacement, slewDeg: angle };
+            const rad = (angle * Math.PI) / 180;
+            const placement: BoomPlacement = {
+                ...basePlacement,
+                pivotM: {
+                    x: basePlacement.pivotM.x + footOffsetM * Math.cos(rad),
+                    y: basePlacement.pivotM.y + footOffsetM * Math.sin(rad),
+                    z: basePlacement.pivotM.z,
+                },
+                slewDeg: angle,
+            };
             const report = checkPreparedObstacles(factory, placement, obstacles);
 
             steps.push({ slewDeg: angle, report });
@@ -355,7 +373,7 @@ export function sweepSlew(
         (gap, angle, i) => (i === 0 ? gap : Math.max(gap, Math.abs(angle - angles[i - 1]))),
         0,
     );
-    const allowanceM = betweenSamplesAllowanceM(basePlacement, maxAngleGapDeg);
+    const allowanceM = betweenSamplesAllowanceM(basePlacement, maxAngleGapDeg, footOffsetM);
     const verdict = judgeWholeSwing(steps, anyCollision, allowanceM);
 
     return {

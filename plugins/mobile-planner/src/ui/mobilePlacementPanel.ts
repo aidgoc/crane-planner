@@ -7,7 +7,7 @@
 // Owner: Ajit
 // ============================================================================
 
-import { type I18nKeys, type IView, PubSub } from "@chili3d/core";
+import { type I18nKeys, type IShapeFactory, type IView, PubSub } from "@chili3d/core";
 import { div, input, span } from "@chili3d/element";
 import { MobileCraneBodyNode } from "../body/mobileCraneBody";
 import { BOOM_LENGTHS_M, KIT } from "../modules/craneModel";
@@ -21,6 +21,7 @@ import {
     validatePlacementInput,
 } from "../modules/placementState";
 import { SAMPLE_SITE_OBSTACLES } from "../modules/sampleSiteObstacles";
+import { Clearance3DSection } from "./clearance3dSection";
 import style from "./mobilePlacementPanel.module.css";
 
 // ---------------------------------------------------------------------------
@@ -86,6 +87,8 @@ export class MobileCranePlacementPanel {
     private readonly obstacleContainer: HTMLElement;
     private readonly rOverall: ResultRow;
     private readonly reasonsContainer: HTMLElement;
+    /** M6 3D boom clearance and M7 swing sweep (owner: Abhishek). */
+    private readonly clearance3d: Clearance3DSection;
 
     private state: MobilePlacementInput;
     private obstacles: readonly SiteObstacle[] = SAMPLE_SITE_OBSTACLES;
@@ -137,6 +140,9 @@ export class MobileCranePlacementPanel {
         this.rOverall = resultRow("Overall verdict");
         this.reasonsContainer = div({ className: style.reasonList });
         this.obstacleContainer = div({ className: style.section });
+        this.clearance3d = new Clearance3DSection(
+            () => (globalThis as unknown as { shapeFactory?: IShapeFactory }).shapeFactory,
+        );
 
         this.root = this.buildLayout();
         this.bindInputs();
@@ -176,6 +182,7 @@ export class MobileCranePlacementPanel {
     dispose(): void {
         if (this.disposed) return;
         this.disposed = true;
+        this.clearance3d.dispose();
         this.root.remove();
         this.onDisposeCallback?.();
         this.onDisposeCallback = undefined;
@@ -302,6 +309,8 @@ export class MobileCranePlacementPanel {
             ]),
             // Results — Obstacles
             this.obstacleContainer,
+            // Results — 3D boom clearance (M6) and swing sweep (M7)
+            this.clearance3d.el,
             // Overall
             this.section("Verdict", [this.rOverall.el, this.reasonsContainer]),
         );
@@ -475,6 +484,7 @@ export class MobileCranePlacementPanel {
             div({ className: style.sectionTitle, textContent: "Obstacle Clearances" }),
         );
         this.obstacleContainer.appendChild(div({ className: style.note, textContent: "—" }));
+        this.clearance3d.clear();
 
         this.rOverall.val.textContent = "";
         this.rOverall.val.appendChild(badge("INVALID INPUT", "warn"));
@@ -491,6 +501,7 @@ export class MobileCranePlacementPanel {
         try {
             const r = computePlacement(this.state, this.obstacles);
             this.renderResults(r);
+            this.clearance3d.update(this.state, this.obstacles);
         } catch (err) {
             this.renderInvalidInput(err instanceof Error ? err.message : "Calculation error");
         }
