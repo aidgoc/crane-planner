@@ -20,7 +20,7 @@ import {
     type SiteObstacle,
     validatePlacementInput,
 } from "../modules/placementState";
-import { SAMPLE_SITE_OBSTACLES } from "../modules/sampleSiteObstacles";
+import { loadPlacementObstacles } from "../modules/siteObstacleAdapter";
 import style from "./mobilePlacementPanel.module.css";
 
 // ---------------------------------------------------------------------------
@@ -88,13 +88,29 @@ export class MobileCranePlacementPanel {
     private readonly reasonsContainer: HTMLElement;
 
     private state: MobilePlacementInput;
-    private obstacles: readonly SiteObstacle[] = SAMPLE_SITE_OBSTACLES;
+    private obstacles: readonly SiteObstacle[];
+    private siteName: string | undefined;
     private craneMarkerNode: MobileCraneBodyNode | undefined;
     private disposed = false;
     private shown = false;
     private onDisposeCallback: (() => void) | undefined;
 
-    constructor(private readonly view: IView) {
+    constructor(
+        private readonly view: IView,
+        initialObstacles?: readonly SiteObstacle[],
+        siteName?: string,
+    ) {
+        if (initialObstacles !== undefined) {
+            this.obstacles = initialObstacles;
+            this.siteName = siteName;
+        } else if (view.document) {
+            const loaded = loadPlacementObstacles(view.document);
+            this.obstacles = loaded?.obstacles ?? [];
+            this.siteName = loaded?.siteName;
+        } else {
+            this.obstacles = [];
+            this.siteName = undefined;
+        }
         this.state = createDefaultPlacementInput();
 
         // Create input fields
@@ -144,9 +160,18 @@ export class MobileCranePlacementPanel {
     }
 
     /** Set site obstacles and recompute. */
-    setObstacles(obstacles: readonly SiteObstacle[]): void {
+    setObstacles(obstacles: readonly SiteObstacle[], siteName?: string): void {
         this.obstacles = obstacles;
+        if (siteName !== undefined) this.siteName = siteName;
         this.refresh();
+    }
+
+    getObstacles(): readonly SiteObstacle[] {
+        return this.obstacles;
+    }
+
+    getSiteName(): string | undefined {
+        return this.siteName;
     }
 
     onDispose(callback: () => void): void {
@@ -546,6 +571,11 @@ export class MobileCranePlacementPanel {
         this.obstacleContainer.appendChild(
             div({ className: style.sectionTitle, textContent: "Obstacle Clearances" }),
         );
+        // Site Source information row
+        const siteLabelText = this.siteName
+            ? `Site: ${this.siteName} (${this.obstacles.length} obstacle${this.obstacles.length === 1 ? "" : "s"})`
+            : "Site: No active site model selected";
+        this.obstacleContainer.appendChild(div({ className: style.note, textContent: siteLabelText }));
         // Point 1 — 2D-only clearance limitation note
         this.obstacleContainer.appendChild(
             div({
@@ -554,19 +584,23 @@ export class MobileCranePlacementPanel {
                     "\u26a0 Horizontal plan clearance only \u2014 vertical clearance is not evaluated.",
             }),
         );
-        // Point 3 — INDICATIVE sample-site values notice
-        this.obstacleContainer.appendChild(
-            div({
-                className: style.note,
-                textContent:
-                    "INDICATIVE sample-site values (2 m clearance margin). Not verified engineering data \u2014 replace with site-specific figures for real projects.",
-            }),
-        );
-        if (r.obstacleClearances.length === 0) {
+        if (this.obstacles.length === 0) {
             this.obstacleContainer.appendChild(
-                div({ className: style.note, textContent: "No site obstacles checked." }),
+                div({
+                    className: style.note,
+                    textContent:
+                        "No site model is selected in this project. Use 'Import Site DXF' in the Manager tab to load site obstacles. Clearance status is NOT_CHECKED.",
+                }),
             );
         } else {
+            // Point 3 — INDICATIVE planning clearance limits notice
+            this.obstacleContainer.appendChild(
+                div({
+                    className: style.note,
+                    textContent:
+                        "INDICATIVE planning clearance limits (2 m building margin). Not verified engineering data \u2014 replace with site-specific figures for real projects.",
+                }),
+            );
             for (const c of r.obstacleClearances) {
                 const row = resultRow(c.label);
                 const prefix = c.isCollision
