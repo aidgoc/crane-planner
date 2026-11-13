@@ -70,6 +70,11 @@ function statusBadge(status: "SAFE" | "WARNING" | "CRITICAL" | null): HTMLElemen
     return badge(status, status === "SAFE" ? "pass" : "fail");
 }
 
+/** The id an obstacle gets in the M6 check: its position in the panel's obstacle list. */
+export function obstacleId(index: number): string {
+    return `obstacle-${index}`;
+}
+
 /**
  * Turns the panel's obstacles into the M6 inputs. A polygon with a height becomes a building;
  * an xLineM becomes the power line (only one power line is supported by M6, the first one is
@@ -82,7 +87,7 @@ export function splitObstacles(obstacles: readonly SiteObstacle[]): SplitObstacl
     obstacles.forEach((o, i) => {
         if (o.polygon && o.polygon.length >= 3 && o.heightM !== undefined && o.heightM > 0) {
             buildings.push({
-                id: `obstacle-${i}`,
+                id: obstacleId(i),
                 label: o.label,
                 polygon: o.polygon.map((p) => [p[0], p[1]] as [number, number]),
                 height_m: o.heightM,
@@ -91,7 +96,7 @@ export function splitObstacles(obstacles: readonly SiteObstacle[]): SplitObstacl
         } else if (o.xLineM !== undefined && Number.isFinite(o.xLineM)) {
             if (powerLine === undefined) {
                 powerLine = {
-                    id: `obstacle-${i}`,
+                    id: obstacleId(i),
                     label: o.label,
                     x_m: o.xLineM,
                     clearanceLimitM: o.requiredClearanceM,
@@ -166,7 +171,8 @@ export class Clearance3DSection {
             className: style.note,
             textContent:
                 "3D distance from the boom (a 0.5 m radius cylinder on a 2.5 m high slew deck, both INDICATIVE) " +
-                "to each obstacle solid. Clearance limits are INDICATIVE. WARNING and CRITICAL are shown red.",
+                "to each obstacle solid. Clearance limits are INDICATIVE. WARNING and CRITICAL are shown red. " +
+                "The 3D results are shown separately: they are not part of the Overall verdict yet.",
         });
         this.m6Rows = div({});
         this.m7Rows = div({});
@@ -175,7 +181,7 @@ export class Clearance3DSection {
         this.stepInput = this.numInput(DEFAULT_SWEEP.stepDeg);
         this.runButton = document.createElement("button");
         this.runButton.textContent = "Run swing sweep";
-        this.runButton.className = style.number;
+        this.runButton.className = style.runButton;
         this.runButton.addEventListener("click", () => this.runSweep());
 
         this.el = div(
@@ -320,10 +326,11 @@ export class Clearance3DSection {
             );
         }
         // Show in the order of the site (stable between updates), not sorted by severity.
-        const byLabel = new Map<string, ObstacleClearanceResult>();
-        for (const o of report.obstacles) byLabel.set(o.obstacleLabel, o);
-        for (const o of this.obstacles) {
-            const r = byLabel.get(o.label);
+        // Match on the obstacle id, not the label: two obstacles can have the same label.
+        const byId = new Map<string, ObstacleClearanceResult>();
+        for (const o of report.obstacles) byId.set(o.obstacleId, o);
+        for (let i = 0; i < this.obstacles.length; i++) {
+            const r = byId.get(obstacleId(i));
             if (!r) continue;
             const text = r.isCollision
                 ? `COLLISION (${fmt(r.minDistanceM)} m)`

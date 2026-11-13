@@ -243,13 +243,20 @@ export function generateSlewAngles(fromDeg: number, toDeg: number, stepDeg: numb
  * angle to the angle halfway to the next sample (the worst case between two
  * samples).
  *
- * The slew turns the boom about the vertical line through its foot. Every point
- * of the boom cylinder is at most sqrt(L^2 + r^2) from the foot, and a point at
- * distance d from the turning line moves by 2 d sin(delta / 2) when the slew
- * turns by delta. Here delta is half of `maxGapDeg`: any angle between two
- * samples is within half a gap of the nearest one. The distance between two
- * solids changes by at most the distance the boom points move, so the real
- * clearance at any angle is at least (sampled clearance) - (this value).
+ * The slew turns the boom about the vertical slew axis through the crane centre.
+ * The boom foot is `footOffsetM` from that axis (0 when the foot is on it). Every
+ * point of the boom cylinder is at most sqrt(L^2 + r^2) from the foot, so at most
+ * footOffsetM + sqrt(L^2 + r^2) from the axis. A point at distance d from the axis
+ * moves by 2 d sin(delta / 2) when the slew turns by delta. Here delta is half of
+ * `maxGapDeg`: any angle between two samples is within half a gap of the nearest
+ * one. The distance between two solids changes by at most the distance the boom
+ * points move, so the real clearance at any angle is at least
+ * (sampled clearance) - (this value).
+ *
+ * @param boom - Boom placement (foot, length, radius).
+ * @param maxGapDeg - Largest gap between two neighbouring sampled slew angles, in degrees.
+ * @param footOffsetM - Distance from the slew axis to the boom foot, in metres (default 0).
+ * @returns The allowance in metres.
  */
 export function betweenSamplesAllowanceM(boom: BoomPlacement, maxGapDeg: number, footOffsetM = 0): number {
     // Farthest boom point from the slew axis: the foot offset plus the farthest point from the foot.

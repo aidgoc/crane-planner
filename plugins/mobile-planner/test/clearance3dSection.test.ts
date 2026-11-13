@@ -246,6 +246,30 @@ test("invalid panel input clears both results", () => {
     expect(text(section)).not.toContain("Worst distance");
 });
 
+test("the section says that the 3D results are not part of the Overall verdict", () => {
+    const section = makeSection(undefined);
+    expect(text(section)).toContain("not part of the Overall verdict");
+});
+
+test("two obstacles with the same label each show their own distance (rows are matched by id)", () => {
+    const tower = SAMPLE_SITE_OBSTACLES[0];
+    const podium = SAMPLE_SITE_OBSTACLES.find((o) => o.label.startsWith("Podium"));
+    expect(podium).toBeDefined();
+    const section = makeSection(new ShapeFactory());
+    section.update(CASE_A, [
+        { ...tower, label: "Same label" },
+        { ...(podium as SiteObstacle), label: "Same label" },
+    ]);
+    const rows = Array.from(section.el.querySelectorAll("div")).filter(
+        (d) => d.children.length === 2 && d.firstElementChild?.textContent === "Same label",
+    );
+    const metres = rows.map((r) => /(-?[\d.]+) m/.exec(r.children[1].textContent ?? "")?.[1]).map(Number);
+    expect(metres.length).toBe(2);
+    // Hand values (see the header): Tower A 14.5 m, Podium 6.5 m, in the order of the site.
+    expect(metres[0]).toBeCloseTo(14.5, 1);
+    expect(metres[1]).toBeCloseTo(6.5, 1);
+});
+
 test("the placement panel contains the M6/M7 section and fills it from the sample site", async () => {
     const factory = new ShapeFactory();
     const original = Object.getOwnPropertyDescriptor(globalThis, "shapeFactory");
@@ -270,6 +294,7 @@ test("the placement panel contains the M6/M7 section and fills it from the sampl
     } finally {
         PubSub.default.remove("showFloatPanel", handler);
         if (original) Object.defineProperty(globalThis, "shapeFactory", original);
+        else Reflect.deleteProperty(globalThis, "shapeFactory");
     }
 });
 
