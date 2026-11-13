@@ -243,16 +243,24 @@ export function generateSlewAngles(fromDeg: number, toDeg: number, stepDeg: numb
  * angle to the angle halfway to the next sample (the worst case between two
  * samples).
  *
- * The slew turns the boom about the vertical line through its foot. Every point
- * of the boom cylinder is at most sqrt(L^2 + r^2) from the foot, and a point at
- * distance d from the turning line moves by 2 d sin(delta / 2) when the slew
- * turns by delta. Here delta is half of `maxGapDeg`: any angle between two
- * samples is within half a gap of the nearest one. The distance between two
- * solids changes by at most the distance the boom points move, so the real
- * clearance at any angle is at least (sampled clearance) - (this value).
+ * The slew turns the boom about the vertical slew axis through the crane centre.
+ * The boom foot is `footOffsetM` from that axis (0 when the foot is on it). Every
+ * point of the boom cylinder is at most sqrt(L^2 + r^2) from the foot, so at most
+ * footOffsetM + sqrt(L^2 + r^2) from the axis. A point at distance d from the axis
+ * moves by 2 d sin(delta / 2) when the slew turns by delta. Here delta is half of
+ * `maxGapDeg`: any angle between two samples is within half a gap of the nearest
+ * one. The distance between two solids changes by at most the distance the boom
+ * points move, so the real clearance at any angle is at least
+ * (sampled clearance) - (this value).
+ *
+ * @param boom - Boom placement (foot, length, radius).
+ * @param maxGapDeg - Largest gap between two neighbouring sampled slew angles, in degrees.
+ * @param footOffsetM - Distance from the slew axis to the boom foot, in metres (default 0).
+ * @returns The allowance in metres.
  */
-export function betweenSamplesAllowanceM(boom: BoomPlacement, maxGapDeg: number): number {
-    const reachM = Math.hypot(boom.boomLengthM, boom.boomRadiusM);
+export function betweenSamplesAllowanceM(boom: BoomPlacement, maxGapDeg: number, footOffsetM = 0): number {
+    // Farthest boom point from the slew axis: the foot offset plus the farthest point from the foot.
+    const reachM = footOffsetM + Math.hypot(boom.boomLengthM, boom.boomRadiusM);
     const deltaRad = Math.min(((maxGapDeg / 2) * Math.PI) / 180, Math.PI);
     return 2 * reachM * Math.sin(deltaRad / 2);
 }
@@ -290,6 +298,10 @@ export function betweenSamplesAllowanceM(boom: BoomPlacement, maxGapDeg: number)
  * @param stepDeg - Slew increment in degrees (must be > 0).
  * @param buildings - Building footprints from the site model.
  * @param powerLine - Optional power-line obstacle.
+ * @param footOffsetM - Distance (m, >= 0, default 0) of the boom foot from the slew axis in the slew
+ *   direction. With 0 the pivot of `basePlacement` is on the slew axis and does not move. With an offset,
+ *   `basePlacement.pivotM` is the slew axis point and the foot at each angle is that point plus the offset
+ *   along the slew direction, like the crane's real boom foot.
  * @returns SwingSweepReport.
  *
  * Planning aid, not a certified lift plan.
@@ -302,8 +314,12 @@ export function sweepSlew(
     stepDeg: number,
     buildings: ObstacleFootprint[],
     powerLine?: PowerLineObstacle,
+    footOffsetM = 0,
 ): SwingSweepReport {
     validateSweepParams(basePlacement, fromDeg, toDeg, stepDeg);
+    if (!Number.isFinite(footOffsetM) || footOffsetM < 0) {
+        throw new RangeError(`sweepSlew: footOffsetM must be >= 0 and finite (got ${footOffsetM}).`);
+    }
 
     const angles = generateSlewAngles(fromDeg, toDeg, stepDeg);
     const steps: SweepStep[] = [];
@@ -320,7 +336,16 @@ export function sweepSlew(
     const obstacles = prepareObstacles(factory, buildings, powerLine);
     try {
         for (const angle of angles) {
-            const placement: BoomPlacement = { ...basePlacement, slewDeg: angle };
+            const rad = (angle * Math.PI) / 180;
+            const placement: BoomPlacement = {
+                ...basePlacement,
+                pivotM: {
+                    x: basePlacement.pivotM.x + footOffsetM * Math.cos(rad),
+                    y: basePlacement.pivotM.y + footOffsetM * Math.sin(rad),
+                    z: basePlacement.pivotM.z,
+                },
+                slewDeg: angle,
+            };
             const report = checkPreparedObstacles(factory, placement, obstacles);
 
             steps.push({ slewDeg: angle, report });
@@ -355,7 +380,7 @@ export function sweepSlew(
         (gap, angle, i) => (i === 0 ? gap : Math.max(gap, Math.abs(angle - angles[i - 1]))),
         0,
     );
-    const allowanceM = betweenSamplesAllowanceM(basePlacement, maxAngleGapDeg);
+    const allowanceM = betweenSamplesAllowanceM(basePlacement, maxAngleGapDeg, footOffsetM);
     const verdict = judgeWholeSwing(steps, anyCollision, allowanceM);
 
     return {
