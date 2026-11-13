@@ -1,15 +1,21 @@
 // Part of the Chili3d Project, under the AGPL-3.0 License.
 // See LICENSE file in the project root for full license information.
 
-import { MCT85F5, MCT88 } from "../src/catalogue";
-import { evaluateCrane, evaluatePick, findCranesPassingAllPicks, type Pick } from "../src/pickEngine";
+import { JASO_2R, JASO_TD, MCT85F5, MCT88 } from "../src/catalogue";
+import {
+    evaluateCrane,
+    evaluatePick,
+    findCranesPassingAllPicks,
+    type Pick,
+    resolvePickRadius,
+} from "../src/pickEngine";
 import type { CapacityModel, SourcedNumber } from "../src/types";
 
-// Worked by hand for the MCT 88 with a 30 m jib:
-//   M = 2.70 t × 30 m = 81 t·m; corner = 81 / 5 = 16.2 m.
-//   2.5 t @ 20 m -> 81 / 20 = 4.05 t -> 2.5 / 4.05 = 61.7 %, PASS
-//   3.0 t @ 25 m -> 81 / 25 = 3.24 t -> 3.0 / 3.24 = 92.6 %, PASS
-//   4.0 t @ 30 m -> 81 / 30 = 2.70 t -> 4.0 / 2.70 = 148.1 %, FAIL
+// Worked by hand for the MCT 88 with a 30 m jib from the published p. 4 5 t
+// chart (the conservative step lookup returns the next listed radius):
+//   2.5 t @ 20 m -> 3.90 t -> 2.5 / 3.90 = 64.103 %, PASS
+//   3.0 t @ 25 m -> 3.00 t -> 3.0 / 3.00 = 100 %,    PASS
+//   4.0 t @ 30 m -> 2.50 t -> 4.0 / 2.50 = 160 %,    FAIL
 const SAMPLE_PICKS: readonly Pick[] = [
     { label: "1", loadT: 2.5, radiusM: 20 },
     { label: "2", loadT: 3.0, radiusM: 25 },
@@ -66,12 +72,12 @@ describe("evaluatePick", () => {
         expect(evaluation.picks.map((pick) => pick.status)).toEqual(["PASS", "PASS", "FAIL"]);
 
         const [first, second, third] = evaluation.picks;
-        expect(first.capacityT).toBeCloseTo(4.05, 10);
-        expect(second.capacityT).toBeCloseTo(3.24, 10);
-        expect(third.capacityT).toBeCloseTo(2.7, 10);
-        expect(first.utilisationPct).toBeCloseTo(61.728, 3);
-        expect(second.utilisationPct).toBeCloseTo(92.593, 3);
-        expect(third.utilisationPct).toBeCloseTo(148.148, 3);
+        expect(first.capacityT).toBeCloseTo(3.9, 10);
+        expect(second.capacityT).toBeCloseTo(3.0, 10);
+        expect(third.capacityT).toBeCloseTo(2.5, 10);
+        expect(first.utilisationPct).toBeCloseTo(64.103, 3);
+        expect(second.utilisationPct).toBeCloseTo(100, 10);
+        expect(third.utilisationPct).toBeCloseTo(160, 10);
 
         expect(evaluation.allPass).toBe(false);
         expect(evaluation.failedCount).toBe(1);
@@ -80,8 +86,8 @@ describe("evaluatePick", () => {
     test("fails the backlog acceptance case: 4 t at 30 m on the 30 m jib", () => {
         const result = evaluatePick(MCT88, { loadT: 4, radiusM: 30 }, { jibM: 30 });
 
-        expect(result.capacityT).toBeCloseTo(2.7, 10);
-        expect(result.utilisationPct).toBeCloseTo(148.148, 3);
+        expect(result.capacityT).toBeCloseTo(2.5, 10);
+        expect(result.utilisationPct).toBeCloseTo(160, 10);
         expect(result.status).toBe("FAIL");
     });
 
@@ -120,10 +126,10 @@ describe("evaluatePick", () => {
     });
 
     test("accepts the 52 m maximum working jib and rejects a longer jib", () => {
-        // 1.15 t × 52 m = 59.8 t·m; 59.8 / 52 = 1.15 t. A 1.15 t pick is 100 %.
-        const atMaximum = evaluatePick(MCT88, { loadT: 1.15, radiusM: 52 }, { jibM: 52 });
+        // The p. 4 52 m row ends at 1.10 t, so a 1.10 t pick is 100 %.
+        const atMaximum = evaluatePick(MCT88, { loadT: 1.1, radiusM: 52 }, { jibM: 52 });
         expect(atMaximum.status).toBe("PASS");
-        expect(atMaximum.capacityT).toBeCloseTo(1.15, 10);
+        expect(atMaximum.capacityT).toBeCloseTo(1.1, 10);
         expect(atMaximum.utilisationPct).toBeCloseTo(100, 10);
 
         // 53.1 m is the overall tip length, not a published jib configuration.
@@ -180,16 +186,16 @@ describe("evaluatePick", () => {
     });
 
     test("uses the SIMULATED wind derate in the utilisation check", () => {
-        // No wind: 2.3 / 2.70 = 85.2 %, PASS.
+        // No wind: 2.3 / 2.50 = 92 %, PASS.
         const calm = evaluatePick(MCT88, { loadT: 2.3, radiusM: 30 }, { jibM: 30 });
         expect(calm.status).toBe("PASS");
-        expect(calm.utilisationPct).toBeCloseTo(85.185, 3);
+        expect(calm.utilisationPct).toBeCloseTo(92, 10);
 
-        // Wind 20 km/h: 2.70 × 0.8 = 2.16 t; 2.3 / 2.16 = 106.5 %, FAIL.
+        // Wind 20 km/h: 2.50 × 0.8 = 2.00 t; 2.3 / 2.00 = 115 %, FAIL.
         const windy = evaluatePick(MCT88, { loadT: 2.3, radiusM: 30 }, { jibM: 30, windKmh: 20 });
-        expect(windy.capacityT).toBeCloseTo(2.16, 10);
+        expect(windy.capacityT).toBeCloseTo(2.0, 10);
         expect(windy.status).toBe("FAIL");
-        expect(windy.utilisationPct).toBeCloseTo(106.481, 3);
+        expect(windy.utilisationPct).toBeCloseTo(115, 10);
     });
 
     test("lets a per-pick wind value override the crane-level value", () => {
@@ -204,8 +210,8 @@ describe("evaluatePick", () => {
             { jibM: 30, windKmh: 20 },
         );
 
-        expect(windyPick.capacityT).toBeCloseTo(2.16, 10);
-        expect(calmPick.capacityT).toBeCloseTo(2.7, 10);
+        expect(windyPick.capacityT).toBeCloseTo(2.0, 10);
+        expect(calmPick.capacityT).toBeCloseTo(2.5, 10);
     });
 
     test("falls back to the crane-level wind when the pick wind is undefined", () => {
@@ -215,14 +221,14 @@ describe("evaluatePick", () => {
             { jibM: 30, windKmh: 20 },
         );
 
-        expect(result.capacityT).toBeCloseTo(2.16, 10);
+        expect(result.capacityT).toBeCloseTo(2.0, 10);
         expect(result.status).toBe("FAIL");
     });
 
     test("does not derate at 0 km/h", () => {
-        const result = evaluatePick(MCT88, { loadT: 2.7, radiusM: 30 }, { jibM: 30, windKmh: 0 });
+        const result = evaluatePick(MCT88, { loadT: 2.5, radiusM: 30 }, { jibM: 30, windKmh: 0 });
 
-        expect(result.capacityT).toBeCloseTo(2.7, 10);
+        expect(result.capacityT).toBeCloseTo(2.5, 10);
         expect(result.status).toBe("PASS");
     });
 
@@ -242,12 +248,12 @@ describe("evaluatePick", () => {
     });
 
     test("applies the wind factor exactly once at and above 20 km/h", () => {
-        // 2.70 t × 0.8 = 2.16 t, not 2.70 × 0.8 × 0.8 = 1.728 t.
+        // 2.50 t × 0.8 = 2.00 t, not 2.50 × 0.8 × 0.8 = 1.60 t.
         const atThreshold = evaluatePick(MCT88, { loadT: 2.0, radiusM: 30 }, { jibM: 30, windKmh: 20 });
         const aboveThreshold = evaluatePick(MCT88, { loadT: 2.0, radiusM: 30 }, { jibM: 30, windKmh: 100 });
 
-        expect(atThreshold.capacityT).toBeCloseTo(2.16, 10);
-        expect(aboveThreshold.capacityT).toBeCloseTo(2.16, 10);
+        expect(atThreshold.capacityT).toBeCloseTo(2.0, 10);
+        expect(aboveThreshold.capacityT).toBeCloseTo(2.0, 10);
         expect(aboveThreshold.status).toBe("PASS");
     });
 
@@ -259,8 +265,265 @@ describe("evaluatePick", () => {
         );
 
         expect(result.status).toBe("PASS");
-        expect(result.capacityT).toBeCloseTo(2.7, 10);
+        expect(result.capacityT).toBeCloseTo(2.5, 10);
         expect(result.windKmh).toBeNull();
+    });
+});
+
+describe("resolvePickRadius", () => {
+    test("uses the larger of the mast-to-supply and mast-to-drop distances", () => {
+        // Mast (0,0):
+        //   supply (3,4) -> hypot(3,4) = 5 m
+        //   drop   (0,10) -> hypot(0,10) = 10 m
+        // The drop is farther, so it governs.
+        const result = resolvePickRadius(
+            { loadT: 1, supply: { x: 3, y: 4 }, drop: { x: 0, y: 10 } },
+            { x: 0, y: 0 },
+        );
+
+        expect(result).toEqual({
+            ok: true,
+            radiusM: 10,
+            supplyRadiusM: 5,
+            dropRadiusM: 10,
+            governing: "drop",
+        });
+    });
+
+    test("reports the supply point when it is farther from the mast", () => {
+        // Mast (0,0): supply (0,20) = 20 m; drop (10,0) = 10 m.
+        const result = resolvePickRadius(
+            { loadT: 1, supply: { x: 0, y: 20 }, drop: { x: 10, y: 0 } },
+            { x: 0, y: 0 },
+        );
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error("Expected the coordinate pick to resolve.");
+        expect(result.radiusM).toBe(20);
+        expect(result.supplyRadiusM).toBe(20);
+        expect(result.dropRadiusM).toBe(10);
+        expect(result.governing).toBe("supply");
+    });
+
+    test("reports supply when both points are equidistant", () => {
+        // Mast (0,0): supply (3,4) = 5 m; drop (4,3) = 5 m.
+        const result = resolvePickRadius(
+            { loadT: 1, supply: { x: 3, y: 4 }, drop: { x: 4, y: 3 } },
+            { x: 0, y: 0 },
+        );
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error("Expected the coordinate pick to resolve.");
+        expect(result.radiusM).toBe(5);
+        expect(result.governing).toBe("supply");
+    });
+
+    test("uses the legacy radius only when no coordinates are present", () => {
+        const result = resolvePickRadius({ loadT: 1, radiusM: 20 }, undefined);
+
+        expect(result).toEqual({
+            ok: true,
+            radiusM: 20,
+            supplyRadiusM: null,
+            dropRadiusM: null,
+            governing: "legacy",
+        });
+    });
+
+    test("lets coordinates override a legacy radius", () => {
+        const result = resolvePickRadius(
+            { loadT: 1, radiusM: 1, supply: { x: 3, y: 4 }, drop: { x: 0, y: 10 } },
+            { x: 0, y: 0 },
+        );
+
+        expect(result.ok).toBe(true);
+        if (!result.ok) throw new Error("Expected the coordinate pick to resolve.");
+        expect(result.radiusM).toBe(10);
+        expect(result.governing).toBe("drop");
+    });
+
+    test.each([
+        {
+            name: "a missing mast",
+            pick: { loadT: 1, supply: { x: 3, y: 4 }, drop: { x: 0, y: 10 } },
+            mast: undefined,
+            issue: "invalid-mast",
+        },
+        {
+            name: "a non-finite mast x",
+            pick: { loadT: 1, supply: { x: 3, y: 4 }, drop: { x: 0, y: 10 } },
+            mast: { x: Number.NaN, y: 0 },
+            issue: "invalid-mast",
+        },
+        {
+            name: "a non-finite mast y",
+            pick: { loadT: 1, supply: { x: 3, y: 4 }, drop: { x: 0, y: 10 } },
+            mast: { x: 0, y: Number.NEGATIVE_INFINITY },
+            issue: "invalid-mast",
+        },
+        {
+            name: "a supply point without a drop point",
+            pick: { loadT: 1, supply: { x: 3, y: 4 } },
+            mast: { x: 0, y: 0 },
+            issue: "missing-coordinate",
+        },
+        {
+            name: "a drop point without a supply point",
+            pick: { loadT: 1, drop: { x: 0, y: 10 } },
+            mast: { x: 0, y: 0 },
+            issue: "missing-coordinate",
+        },
+        {
+            name: "a pick with no location at all",
+            pick: { loadT: 1 },
+            mast: { x: 0, y: 0 },
+            issue: "missing-location",
+        },
+        {
+            name: "a non-finite supply x",
+            pick: { loadT: 1, supply: { x: Number.NaN, y: 4 }, drop: { x: 0, y: 10 } },
+            mast: { x: 0, y: 0 },
+            issue: "invalid-coordinate",
+        },
+        {
+            name: "a non-finite drop y",
+            pick: { loadT: 1, supply: { x: 3, y: 4 }, drop: { x: 0, y: Number.POSITIVE_INFINITY } },
+            mast: { x: 0, y: 0 },
+            issue: "invalid-coordinate",
+        },
+        {
+            name: "a zero-radius pick at the mast",
+            pick: { loadT: 1, supply: { x: 0, y: 0 }, drop: { x: 0, y: 0 } },
+            mast: { x: 0, y: 0 },
+            issue: "invalid-radius",
+        },
+        {
+            name: "a zero legacy radius",
+            pick: { loadT: 1, radiusM: 0 },
+            mast: undefined,
+            issue: "invalid-radius",
+        },
+        {
+            name: "a negative legacy radius",
+            pick: { loadT: 1, radiusM: -5 },
+            mast: undefined,
+            issue: "invalid-radius",
+        },
+        {
+            name: "a NaN legacy radius",
+            pick: { loadT: 1, radiusM: Number.NaN },
+            mast: undefined,
+            issue: "invalid-radius",
+        },
+    ])("rejects $name", ({ pick, mast, issue }) => {
+        const result = resolvePickRadius(pick as Pick, mast);
+
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error("Expected the pick radius to be rejected.");
+        expect(result.issue).toBe(issue);
+    });
+
+    test("never substitutes zero for a blank coordinate", () => {
+        const result = resolvePickRadius(
+            { loadT: 1, supply: { x: Number.NaN, y: Number.NaN }, drop: { x: 0, y: 10 } },
+            { x: 0, y: 0 },
+        );
+
+        expect(result.ok).toBe(false);
+        if (result.ok) throw new Error("Expected the coordinate pick to be rejected.");
+        expect(result.issue).toBe("invalid-coordinate");
+    });
+});
+
+describe("coordinate-based pick evaluation", () => {
+    test("evaluates the governing radius (hand-worked)", () => {
+        // Mast (0,0): supply (3,4) = 5 m; drop (0,10) = 10 m -> 10 m governs.
+        // MCT 88, 30 m jib: the chart's first listed radius is 16.3 m (5.0 t),
+        // so 10 m is inside the 5 t plateau: 4.0 / 5.0 = 80 %, PASS.
+        const result = evaluatePick(
+            MCT88,
+            { label: "1", loadT: 4, supply: { x: 3, y: 4 }, drop: { x: 0, y: 10 } },
+            { jibM: 30, mast: { x: 0, y: 0 } },
+        );
+
+        expect(result.radiusM).toBe(10);
+        expect(result.supplyRadiusM).toBe(5);
+        expect(result.dropRadiusM).toBe(10);
+        expect(result.governing).toBe("drop");
+        expect(result.capacityT).toBeCloseTo(5, 10);
+        expect(result.utilisationPct).toBeCloseTo(80, 10);
+        expect(result.status).toBe("PASS");
+    });
+
+    test("returns OUT_OF_RANGE when the governing radius exceeds the jib", () => {
+        const result = evaluatePick(
+            MCT88,
+            { loadT: 1, supply: { x: 3, y: 4 }, drop: { x: 0, y: 30.1 } },
+            { jibM: 30, mast: { x: 0, y: 0 } },
+        );
+
+        expect(result.status).toBe("OUT_OF_RANGE");
+        expect(result.radiusM).toBeCloseTo(30.1, 10);
+        expect(result.capacityT).toBeNull();
+        expect(result.utilisationPct).toBeNull();
+    });
+
+    test("marks a coordinate pick without a mast as INVALID", () => {
+        const result = evaluatePick(
+            MCT88,
+            { loadT: 1, supply: { x: 3, y: 4 }, drop: { x: 0, y: 10 } },
+            { jibM: 30 },
+        );
+
+        expect(result.status).toBe("INVALID");
+        expect(result.issue).toBe("invalid-mast");
+        expect(result.radiusM).toBeNull();
+        expect(result.supplyRadiusM).toBeNull();
+        expect(result.dropRadiusM).toBeNull();
+        expect(result.governing).toBeNull();
+    });
+
+    test("marks a non-finite coordinate as INVALID", () => {
+        const result = evaluatePick(
+            MCT88,
+            { loadT: 1, supply: { x: Number.NaN, y: 4 }, drop: { x: 0, y: 10 } },
+            { jibM: 30, mast: { x: 0, y: 0 } },
+        );
+
+        expect(result.status).toBe("INVALID");
+        expect(result.issue).toBe("invalid-coordinate");
+        expect(result.capacityT).toBeNull();
+    });
+
+    test("propagates the mast position through evaluateCrane", () => {
+        const evaluation = evaluateCrane(
+            MCT88,
+            [
+                { label: "1", loadT: 4, supply: { x: 3, y: 4 }, drop: { x: 0, y: 10 } },
+                { label: "2", loadT: 1, supply: { x: 0, y: 0 }, drop: { x: 0, y: 20 } },
+            ],
+            { jibM: 30, mast: { x: 0, y: 0 } },
+        );
+
+        expect(evaluation.picks.map((pick) => pick.radiusM)).toEqual([10, 20]);
+        expect(evaluation.picks.map((pick) => pick.governing)).toEqual(["drop", "drop"]);
+        expect(evaluation.picks.map((pick) => pick.status)).toEqual(["PASS", "PASS"]);
+    });
+
+    test("filters cranes with coordinate picks only when a mast is supplied", () => {
+        const picks: Pick[] = [{ loadT: 3.5, supply: { x: 0, y: 0 }, drop: { x: 0, y: 20 } }];
+
+        // MCT 88 at 20 m on the 30 m jib: 3.90 t from the p. 4 chart, so 3.5 t
+        // passes. The synthetic mini has a 0.75 t tip load and only 0.75 t at
+        // 20 m, so it fails.
+        expect(
+            findCranesPassingAllPicks([MCT88, SYNTHETIC_MINI], picks, { mast: { x: 0, y: 0 } }).map(
+                (evaluation) => evaluation.craneId,
+            ),
+        ).toEqual(["potain-mct-88"]);
+
+        // Without a mast the coordinate pick cannot produce a radius.
+        expect(findCranesPassingAllPicks([MCT88, SYNTHETIC_MINI], picks)).toEqual([]);
     });
 });
 
@@ -366,6 +629,54 @@ describe("MCT 85 F5 pick evaluation", () => {
     });
 });
 
+describe("luffing-jib crane evaluation", () => {
+    test.each([
+        { crane: JASO_TD, name: "JASO TD" },
+        { crane: JASO_2R, name: "JASO 2R" },
+    ])("$name is UNSUPPORTED with no capacity or utilisation", ({ crane }) => {
+        const result = evaluatePick(crane, { label: "P1", loadT: 5, radiusM: 30 });
+
+        expect(result.status).toBe("UNSUPPORTED");
+        expect(result.issue).toBe("unsupported-crane-type");
+        expect(result.capacityT).toBeNull();
+        expect(result.utilisationPct).toBeNull();
+        expect(result.radiusM).toBe(30);
+    });
+
+    test("checks the crane type before the pick values", () => {
+        // An invalid load would normally be INVALID, but a luffing-jib crane is
+        // outside this engine regardless of the pick data.
+        const result = evaluatePick(JASO_TD, { loadT: -1, radiusM: 30 });
+
+        expect(result.status).toBe("UNSUPPORTED");
+        expect(result.issue).toBe("unsupported-crane-type");
+    });
+
+    test("evaluateCrane marks the whole row unsupported and never all-pass", () => {
+        const evaluation = evaluateCrane(JASO_TD, SAMPLE_PICKS);
+
+        expect(evaluation.unsupported).toBe(true);
+        expect(evaluation.allPass).toBe(false);
+        expect(evaluation.failedCount).toBe(SAMPLE_PICKS.length);
+        expect(evaluation.picks.every((pick) => pick.status === "UNSUPPORTED")).toBe(true);
+    });
+
+    test("an empty pick list on an unsupported crane is not a pass", () => {
+        const evaluation = evaluateCrane(JASO_2R, []);
+
+        expect(evaluation.unsupported).toBe(true);
+        expect(evaluation.allPass).toBe(false);
+    });
+
+    test("findCranesPassingAllPicks excludes luffing-jib entries", () => {
+        const picks: Pick[] = [{ loadT: 2.5, radiusM: 20 }];
+
+        const passing = findCranesPassingAllPicks([MCT88, JASO_TD, JASO_2R], picks);
+
+        expect(passing.map((row) => row.craneId)).toEqual(["potain-mct-88"]);
+    });
+});
+
 describe("findCranesPassingAllPicks", () => {
     test("returns only the cranes that pass every pick", () => {
         const passing = findCranesPassingAllPicks(
@@ -387,14 +698,22 @@ describe("findCranesPassingAllPicks", () => {
         expect(findCranesPassingAllPicks([MCT88, SYNTHETIC_MINI, SYNTHETIC_WIDE], impossible)).toEqual([]);
     });
 
-    test("filters the MCT 85 F5 using its own chart, not the MCT 88 curve", () => {
-        // 4.0 t @ 20 m: MCT 88 capacity 4.05 t (PASS), MCT 85 F5 3.9 t (FAIL).
+    test("filters each crane using its own published chart", () => {
+        // 4.0 t @ 20 m: both 30 m charts print 3.90 t, so neither crane passes.
         const heavy = findCranesPassingAllPicks([MCT88, MCT85F5], [{ loadT: 4.0, radiusM: 20 }]);
-        expect(heavy.map((evaluation) => evaluation.craneId)).toEqual(["potain-mct-88"]);
+        expect(heavy).toEqual([]);
 
-        // 2.5 t @ 20 m passes both: 4.05 t on the MCT 88, 3.9 t on the MCT 85 F5.
+        // 2.5 t @ 20 m passes both: 3.90 t on each 30 m chart.
         const light = findCranesPassingAllPicks([MCT88, MCT85F5], [{ loadT: 2.5, radiusM: 20 }]);
         expect(light.map((evaluation) => evaluation.craneId)).toEqual(["potain-mct-88", "potain-mct-85-f5"]);
+
+        // The charts differ only at the 25 m jib's final point: MCT 88 prints
+        // 3.00 t, MCT 85 F5 prints 3.02 t. A 3.01 t pick therefore separates
+        // the two chart models when both cranes use the 25 m configuration.
+        const distinct = findCranesPassingAllPicks([MCT88, MCT85F5], [{ loadT: 3.01, radiusM: 25 }], {
+            jibMByCrane: { "potain-mct-88": 25, "potain-mct-85-f5": 25 },
+        });
+        expect(distinct.map((evaluation) => evaluation.craneId)).toEqual(["potain-mct-85-f5"]);
     });
 
     test("applies a per-crane jib override to the MCT 85 F5", () => {
@@ -410,21 +729,22 @@ describe("findCranesPassingAllPicks", () => {
     });
 
     test("applies jibMByCrane overrides and falls back to the shared jib", () => {
-        // 2.66 t at 30 m passes on the 30 m jib (capacity 2.70 t) but fails on
-        // the 35 m jib (2.27 t × 35 m / 30 m = 2.6483 t).
-        const pick: Pick[] = [{ loadT: 2.66, radiusM: 30 }];
+        // 4.9 t at 16.35 m: the 30 m chart's next listed radius is 17 m
+        // (4.80 t), so the shared default fails. The 35 m chart's first point is
+        // 16.4 m (5.00 t), so the 35 m override passes.
+        const pick: Pick[] = [{ loadT: 4.9, radiusM: 16.35 }];
 
-        expect(findCranesPassingAllPicks([MCT88], pick)).toHaveLength(1);
+        expect(findCranesPassingAllPicks([MCT88], pick)).toEqual([]);
         expect(
             findCranesPassingAllPicks([MCT88], pick, {
                 jibMByCrane: { "potain-mct-88": 35 },
             }),
-        ).toEqual([]);
+        ).toHaveLength(1);
         expect(
             findCranesPassingAllPicks([MCT88], pick, {
                 jibM: 35,
                 jibMByCrane: { other: 30 },
             }),
-        ).toEqual([]);
+        ).toHaveLength(1);
     });
 });
