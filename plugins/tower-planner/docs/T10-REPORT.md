@@ -165,25 +165,26 @@ In particular:
 The `sources` table contains a dedicated "Capacity basis" entry resolved from
 the exact catalogue row used for the selected jib:
 
-- **Load-chart crane (for example MCT 85 F5)** — the entry is resolved from the
-  exact published point, or the exact bounding point pair, used at each
-  supplied pick radius. It is not taken from `chart.points[0]` unconditionally.
-  The note lists the published point(s) and the selected radius(es). MCT 85 F5
-  therefore cites `datasheetLoadCharts` page 3, not the crane overview on page
-  1. Both the `radiusM` and `capacityT` provenance of every used point must
-  agree on one attribution; mixed, missing or unresolved point provenance makes
-  the entry `NOT_STATED`.
+- **Load-chart crane (for example MCT 85 F5 and MCT 88)** — the entry is
+  resolved from the exact published point, or the exact bounding point pair,
+  used at each supplied pick radius. It is not taken from `chart.points[0]`
+  unconditionally. The note lists the published point(s) and the selected
+  radius(es). MCT 85 F5 therefore cites `datasheetLoadCharts` page 3 and the
+  MCT 88 cites `datasheetLoadCharts` page 4, not the crane overview on page 1.
+  Both the `radiusM` and `capacityT` provenance of every used point must agree
+  on one attribution; mixed, missing or unresolved point provenance makes the
+  entry `NOT_STATED`.
 - For a load-chart crane, only picks with a finite, non-null supplied
   `capacityT` contribute a radius. A pick with no published capacity is not
   described as having one; if no supplied pick has a finite capacity, the entry
   is `NOT_STATED`.
-- **Tip-load crane (for example MCT 88)** — the entry is resolved from the
-  published tip-load row for the selected jib, or from the two bounding rows
-  when the selected jib is interpolated. The note records the Cycle 2 tip-load
-  idealisation (capacity derived from the published tip load and jib length,
-  not a per-radius chart). The exact-row comparison deliberately matches the
-  engine's boundary, so a jib slightly above a published row is described as an
-  interpolation rather than an exact lookup.
+- **Tip-load-only crane (a model without `loadChart`)** — the entry is resolved
+  from the published tip-load row for the selected jib, or from the two bounding
+  rows when the selected jib is interpolated. The note records the Cycle 2
+  tip-load idealisation (capacity derived from the published tip load and jib
+  length, not a per-radius chart). The exact-row comparison deliberately matches
+  the engine's boundary, so a jib slightly above a published row is described as
+  an interpolation rather than an exact lookup.
 - If no exact chart row exists, the jib is outside the published tip-load
   range, or the relevant bounding rows/points cannot be attributed to one
   resolved source, the entry is `NOT_STATED` with the reason. No page number or
@@ -281,7 +282,8 @@ states, evaluation metadata contradictions, per-pick metadata and wind
 overrides, positive-integer page validation, blank INDICATIVE/LEGACY evidence,
 malformed provenance, containers and boundary geometry, capacity source mapping
 for MCT 85 F5 and MCT 88, exact chart-point usage, null-capacity pick exclusion
-and mixed point provenance, interpolation,
+and mixed point provenance, NotStated catalogue dimension and
+heaviest-component preservation, interpolation,
 determinism and copy isolation. They
 also retain the hand-worked T8 power-line case:
 

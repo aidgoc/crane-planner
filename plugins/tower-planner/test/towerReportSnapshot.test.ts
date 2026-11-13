@@ -163,6 +163,18 @@ function stateForCrane(
     });
 }
 
+/**
+ * PR #16 added a per-radius load chart to the catalogue MCT 88. The tip-load
+ * path is still supported for models without a chart, so tip-load-specific
+ * tests use a clone with the chart removed rather than inventing a new
+ * expectation for the catalogue entry.
+ */
+const MCT88_TIP_LOAD_ONLY = (() => {
+    const crane = structuredClone(MCT88);
+    delete crane.loadChart;
+    return crane;
+})();
+
 function findResult<T extends { id: string }>(results: readonly T[] | undefined, id: string): T {
     const result = results?.find((item) => item.id === id);
     if (!result) throw new Error(`missing result: ${id}`);
@@ -761,23 +773,44 @@ describe("T10 tower report snapshot", () => {
     });
 
     test("the MCT 88 capacity basis cites its tip-load row and discloses the idealisation", () => {
-        const overview = MCT88.sources.datasheetOverview;
-        if (!overview) throw new Error("MCT88 overview source is missing");
+        const tipRow = MCT88.tipLoadByJib.find((row) => row.jibM.value === 30);
+        if (!tipRow || tipRow.tipT.provenance.kind !== "source") {
+            throw new Error("MCT88 30 m tip-load row is missing its source");
+        }
+        const tipSource = MCT88.sources[tipRow.tipT.provenance.sourceId];
+        if (!tipSource) throw new Error("MCT88 tip-load source is missing");
+
+        const snapshot = buildTowerReportSnapshot(makeState({ crane: MCT88_TIP_LOAD_ONLY }));
+        const basis = findSource(snapshot, "Capacity basis");
+
+        expect(basis).toMatchObject({
+            status: "VERIFIED",
+            document: tipSource.document,
+            page: tipSource.page,
+        });
+        expect(basis.page).toBe(4);
+        expect(basis.note).toContain("Tip-load idealisation");
+    });
+
+    test("the catalogue MCT 88 capacity basis cites its per-radius load chart", () => {
+        const chartSource = MCT88.sources.datasheetLoadCharts;
+        if (!chartSource) throw new Error("MCT88 load chart source is missing");
 
         const snapshot = buildTowerReportSnapshot(makeState());
         const basis = findSource(snapshot, "Capacity basis");
 
         expect(basis).toMatchObject({
             status: "VERIFIED",
-            document: overview.document,
-            page: overview.page,
+            document: chartSource.document,
+            page: chartSource.page,
         });
-        expect(basis.note).toContain("Tip-load idealisation");
+        expect(basis.page).toBe(4);
+        expect(basis.note).toContain("Per-radius load chart");
     });
 
     test("interpolated tip-load capacity cites both bounding rows", () => {
         const snapshot = buildTowerReportSnapshot(
-            stateForCrane(MCT88, {
+            stateForCrane(MCT88_TIP_LOAD_ONLY, {
                 value: 32.5,
                 provenance: { kind: "indicative", basis: "32.5 m project configuration" },
             }),
@@ -789,7 +822,7 @@ describe("T10 tower report snapshot", () => {
     });
 
     test("a jib just above a published tip-load row is interpolated, not exact", () => {
-        const basis = mapCapacityBasis(MCT88, 30.0000005);
+        const basis = mapCapacityBasis(MCT88_TIP_LOAD_ONLY, 30.0000005);
 
         expect(basis.status).toBe("VERIFIED");
         expect(basis.note).toContain("Interpolated between the published 30 m and 35 m tip-load rows");
@@ -800,11 +833,11 @@ describe("T10 tower report snapshot", () => {
         expect(unpublishedChartJib.status).toBe("NOT_STATED");
         expect(unpublishedChartJib.note).toContain("No published load chart");
 
-        const outsideTipRange = mapCapacityBasis(MCT88, 60);
+        const outsideTipRange = mapCapacityBasis(MCT88_TIP_LOAD_ONLY, 60);
         expect(outsideTipRange.status).toBe("NOT_STATED");
         expect(outsideTipRange.note).toContain("outside the published tip-load range");
 
-        const crane = structuredClone(MCT88);
+        const crane = structuredClone(MCT88_TIP_LOAD_ONLY);
         crane.tipLoadByJib[2].tipT.provenance = { kind: "source", sourceId: "missing-source" };
         const missingSource = mapCapacityBasis(crane, 30);
         expect(missingSource.status).toBe("NOT_STATED");
@@ -1126,6 +1159,33 @@ describe("T10 tower report snapshot", () => {
 
         expect(snapshot.crane.maxCapacityT.provenance).toBeUndefined();
         expect(findSource(snapshot, "Crane maximum capacity").status).toBe("NOT_STATED");
+    });
+
+    test("NotStated dimensions are preserved with their reason", () => {
+        const crane = structuredClone(MCT88);
+        const reason = "The inspected datasheet does not state the mast width.";
+        crane.dimensions.mastWidthM = { kind: "notStated", reason };
+
+        const snapshot = buildTowerReportSnapshot(makeState({ crane }));
+
+        expect(snapshot.crane.dimensions.mastWidthM).toEqual({ kind: "notStated", reason });
+        expect(snapshot.crane.dimensions.baseWidthM).toEqual(crane.dimensions.baseWidthM);
+        expect(snapshot.crane.dimensions.counterJibRadiusM).toEqual(crane.dimensions.counterJibRadiusM);
+        expect(findSource(snapshot, "Mast width")).toMatchObject({ status: "NOT_STATED", note: reason });
+    });
+
+    test("a NotStated heaviest erection component is preserved with its reason", () => {
+        const crane = structuredClone(MCT88);
+        const reason = "No individual erection-component mass is published.";
+        crane.heaviestErectionComponent = { kind: "notStated", reason };
+
+        const snapshot = buildTowerReportSnapshot(makeState({ crane }));
+
+        expect(snapshot.crane.heaviestErectionComponent).toEqual({ kind: "notStated", reason });
+        expect(findSource(snapshot, "Heaviest erection component mass")).toMatchObject({
+            status: "NOT_STATED",
+            note: reason,
+        });
     });
 
     test("malformed chart, tip-load and site containers are guarded", () => {

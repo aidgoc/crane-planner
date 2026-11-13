@@ -12,7 +12,14 @@ import type {
     TowerPlanPickEvaluation,
     TowerPlanState,
 } from "../model/towerPlanState";
-import type { LoadChartPoint, SourcedNumber, TowerCrane } from "../types";
+import type {
+    CatalogueNumber,
+    HeaviestErectionComponent,
+    LoadChartPoint,
+    NotStated,
+    SourcedNumber,
+    TowerCrane,
+} from "../types";
 import {
     mapCapacityBasis,
     mapCraneDimension,
@@ -106,6 +113,14 @@ function cloneSourcedNumber(value: SourcedNumber | null | undefined): SourcedNum
     return { value: numericValue, provenance: undefined } as unknown as SourcedNumber;
 }
 
+function isNotStated(value: unknown): value is NotStated {
+    return typeof value === "object" && value !== null && (value as { kind?: unknown }).kind === "notStated";
+}
+
+function cloneCatalogueNumber(value: CatalogueNumber | null | undefined): CatalogueNumber {
+    return isNotStated(value) ? { kind: "notStated", reason: value.reason } : cloneSourcedNumber(value);
+}
+
 function cloneCraneDimension(dimension: CraneDimension | null | undefined): CraneDimension {
     const numericValue = typeof dimension?.value === "number" ? dimension.value : Number.NaN;
     const source = dimension?.source;
@@ -171,13 +186,17 @@ function cloneCrane(crane: TowerCrane): TowerCrane {
               )
             : undefined,
         dimensions: {
-            mastWidthM: cloneSourcedNumber(crane.dimensions?.mastWidthM),
-            counterJibLengthM: cloneSourcedNumber(crane.dimensions?.counterJibLengthM),
+            mastWidthM: cloneCatalogueNumber(crane.dimensions?.mastWidthM),
+            baseWidthM: cloneCatalogueNumber(crane.dimensions?.baseWidthM),
+            counterJibLengthM: cloneCatalogueNumber(crane.dimensions?.counterJibLengthM),
+            counterJibRadiusM: cloneCatalogueNumber(crane.dimensions?.counterJibRadiusM),
         },
-        heaviestErectionComponent: {
-            ...crane.heaviestErectionComponent,
-            massT: cloneSourcedNumber(crane.heaviestErectionComponent?.massT),
-        },
+        heaviestErectionComponent: isNotStated(crane.heaviestErectionComponent)
+            ? { kind: "notStated", reason: crane.heaviestErectionComponent.reason }
+            : {
+                  ...crane.heaviestErectionComponent,
+                  massT: cloneSourcedNumber(crane.heaviestErectionComponent?.massT),
+              },
         sources: Object.fromEntries(Object.entries(sources).map(([id, document]) => [id, { ...document }])),
     };
 }
@@ -598,6 +617,31 @@ function buildNotChecked(
     return items;
 }
 
+function mapCatalogueNumber(
+    item: string,
+    value: CatalogueNumber | null | undefined,
+    sources: TowerCrane["sources"] | null | undefined,
+): TowerReportSource {
+    if (isNotStated(value)) {
+        return { item, status: "NOT_STATED", note: value.reason };
+    }
+    return mapSourcedNumber(item, value, sources);
+}
+
+function mapHeaviestErectionComponent(
+    component: HeaviestErectionComponent,
+    sources: TowerCrane["sources"] | null | undefined,
+): TowerReportSource {
+    if (isNotStated(component)) {
+        return {
+            item: "Heaviest erection component mass",
+            status: "NOT_STATED",
+            note: component.reason,
+        };
+    }
+    return mapSourcedNumber("Heaviest erection component mass", component.massT, sources);
+}
+
 function buildSources(state: TowerPlanState, capacitySource: TowerReportSource): TowerReportSource[] {
     const sources: TowerReportSource[] = [];
 
@@ -608,13 +652,13 @@ function buildSources(state: TowerPlanState, capacitySource: TowerReportSource):
     sources.push(
         mapSourcedNumber("Crane maximum capacity", state.crane.maxCapacityT, state.crane.sources),
         mapSourcedNumber("Crane maximum jib length", state.crane.maxJibLengthM, state.crane.sources),
-        mapSourcedNumber("Mast width", state.crane.dimensions.mastWidthM, state.crane.sources),
-        mapSourcedNumber("Counter-jib length", state.crane.dimensions.counterJibLengthM, state.crane.sources),
-        mapSourcedNumber(
-            "Heaviest erection component mass",
-            state.crane.heaviestErectionComponent.massT,
+        mapCatalogueNumber("Mast width", state.crane.dimensions.mastWidthM, state.crane.sources),
+        mapCatalogueNumber(
+            "Counter-jib length",
+            state.crane.dimensions.counterJibLengthM,
             state.crane.sources,
         ),
+        mapHeaviestErectionComponent(state.crane.heaviestErectionComponent, state.crane.sources),
         mapSourcedNumber("Selected jib length", state.jibM, state.crane.sources),
         capacitySource,
         mapCraneDimension("Hook height (available)", state.heightParameters.hookHeight),
@@ -683,9 +727,14 @@ export function buildTowerReportSnapshot(state: TowerPlanState): TowerReportSnap
     // Only a pick with a supplied finite capacity is evidence that the capacity
     // engine actually used the chart for that radius. Picks with a null capacity
     // (invalid input, out of range, unsupported) must not be attributed a basis.
-    const capacityRadiiM = picks
-        .filter((pick) => pick.capacityT !== null && Number.isFinite(pick.capacityT))
-        .map((pick) => pick.radiusM);
+    const capacityRadiiM = picks.flatMap((pick) =>
+        pick.capacityT !== null &&
+        Number.isFinite(pick.capacityT) &&
+        pick.radiusM !== null &&
+        Number.isFinite(pick.radiusM)
+            ? [pick.radiusM]
+            : [],
+    );
     const capacitySource = mapCapacityBasis(
         state.crane,
         state.jibM.value,
