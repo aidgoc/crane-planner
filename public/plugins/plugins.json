@@ -1,6 +1,9 @@
 {
     "plugins": [
         "macro",
-        "visual-programming"
+        "visual-programming",
+        "site-model",
+        "tower-planner",
+        "mobile-planner"
     ]
 }
