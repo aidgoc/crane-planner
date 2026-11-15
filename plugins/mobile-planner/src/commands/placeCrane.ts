@@ -15,6 +15,7 @@ import {
     type ICommand,
     PubSub,
 } from "@chili3d/core";
+import { loadPlacementObstacles } from "../modules/siteObstacleAdapter";
 import { MobileCranePlacementPanel } from "../ui/mobilePlacementPanel";
 
 let activePanel: MobileCranePlacementPanel | undefined;
@@ -32,8 +33,10 @@ export class PlaceMobileCraneCommand implements ICommand {
             return;
         }
 
+        const site = loadPlacementObstacles(view.document);
+
         activePanel?.dispose();
-        const panel = new MobileCranePlacementPanel(view);
+        const panel = new MobileCranePlacementPanel(view, site?.obstacles, site?.siteName);
         activePanel = panel;
         panel.onDispose(() => {
             if (activePanel === panel) activePanel = undefined;

@@ -60,12 +60,17 @@ const MobilePlannerPlugin: Plugin = {
                 "mobile.placement.title": "Mobile Crane Placement",
                 "mobile.crane.loaded": `${KIT.name} loaded. Planning aid, not a certified lift plan.`,
                 "mobile.crane.marker": "Mobile Crane",
+                "mobile.crane.site.noActiveSite":
+                    "No site model is selected in project '{0}'. Use the Site Model plugin's Import Site DXF command first. Obstacle clearance checks cannot be performed; no PASS is reported.",
+                "mobile.crane.site.unavailable":
+                    "Shared site data unavailable: {0}. Obstacle clearance checks cannot be performed; no PASS is reported.",
             },
         } as unknown as Locale,
     ],
 };
 
 export { calculateLiftCheck } from "./modules/liftCheck";
+export * from "./modules/siteObstacleAdapter";
 export * from "./ui/groundBearingPanel";
 export { KIT };
 export default MobilePlannerPlugin;

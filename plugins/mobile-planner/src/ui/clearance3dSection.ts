@@ -235,6 +235,10 @@ export class Clearance3DSection {
         this.showNote(this.m7Rows, "—");
     }
 
+    getObstacles(): readonly SiteObstacle[] {
+        return this.obstacles;
+    }
+
     dispose(): void {
         this.disposed = true;
         if (this.timer !== undefined) clearTimeout(this.timer);
