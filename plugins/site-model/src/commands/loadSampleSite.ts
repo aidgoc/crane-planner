@@ -91,7 +91,8 @@ export class LoadSampleSiteCommand implements ICommand {
         // 4. Create and add 3D building solids to Document's ModelManager
         const nodesToAdd: BuildingBodyNode[] = [];
         for (const [key, building] of Object.entries(siteProject.buildings)) {
-            if (building.height_m > 0 && building.polygon.length >= 3) {
+            // height_m is null when no height label was found in the DXF — skip: cannot extrude.
+            if (building.height_m !== null && building.height_m > 0 && building.polygon.length >= 3) {
                 const node = new BuildingBodyNode({
                     document: doc,
                     name: key,

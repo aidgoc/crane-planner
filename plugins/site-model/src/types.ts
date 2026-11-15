@@ -60,7 +60,13 @@ export interface BuildingFootprint {
     layer: string;
     label: string;
     polygon: Point2D[];
-    height_m: number;
+    /**
+     * Building height in metres.
+     * `null` means the height could not be determined from the DXF label and no manual override
+     * was provided. Consumers MUST treat `null` as "height unknown — do NOT default to any value".
+     * The 3D clearance engine (M6) will mark such buildings as NOT_CHECKED.
+     */
+    height_m: number | null;
     source: string; // Source document or "INDICATIVE"
     isNeighbour?: boolean;
     neighbourRule?: "no_oversail" | "oversail_by_permission";
