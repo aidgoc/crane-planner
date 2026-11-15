@@ -14,9 +14,10 @@ import { createMockApplication, createMockView, TestDocument } from "@chili3d/co
 import { afterEach, describe, expect, rs, test } from "@rstest/core";
 import { writeSiteSource } from "../../site-model/src/siteSelection";
 import type { SiteProject } from "../../site-model/src/types";
-import { PlaceMobileCraneCommand } from "../src/commands/placeCrane";
+import { getActiveMobilePlacementPanel, PlaceMobileCraneCommand } from "../src/commands/placeCrane";
 import { computePlacement, createDefaultPlacementInput } from "../src/modules/placementState";
 import { adaptSiteProjectToObstacles, loadPlacementObstacles } from "../src/modules/siteObstacleAdapter";
+import { splitObstacles } from "../src/ui/clearance3dSection";
 import { MobileCranePlacementPanel } from "../src/ui/mobilePlacementPanel";
 
 const sampleDxf = readFileSync(
@@ -274,7 +275,7 @@ describe("M8 / S4 — Project Switching and Clearance Hand Check", () => {
         expect(towerA_SiteB?.marginM).toBeGreaterThan(100);
     });
 
-    test("PlaceMobileCraneCommand executes and wires active project obstacles into panel", async () => {
+    test("PlaceMobileCraneCommand executes and wires active project obstacles into opened panel", async () => {
         const { view } = createSiteView(sampleDxf, "sample-site.dxf");
         const app = createMockApplication();
         app.activeView = view;
@@ -282,10 +283,53 @@ describe("M8 / S4 — Project Switching and Clearance Hand Check", () => {
         const cmd = new PlaceMobileCraneCommand();
         await cmd.execute(app);
 
-        // Instantiating panel directly with view reads view.document obstacles
+        // Assert on the panel the command actually opened
+        const panel = getActiveMobilePlacementPanel();
+        expect(panel).toBeDefined();
+        expect(panel?.getSiteName()).toBe("sample-site.dxf");
+        expect(panel?.getObstacles().length).toBeGreaterThanOrEqual(7);
+
+        panel?.dispose();
+    });
+
+    test("PlaceMobileCraneCommand fires noActiveSite toast exactly once when document has no site", async () => {
+        const toasts = captureToasts();
+        const doc = new TestDocument();
+        doc.name = "NoSiteDoc";
+        const view = createMockView({ dom: createDom(), document: doc } as never);
+        const app = createMockApplication();
+        app.activeView = view;
+
+        const cmd = new PlaceMobileCraneCommand();
+        await cmd.execute(app);
+
+        // Toast must fire exactly once (not twice)
+        const noSiteToasts = toasts.filter((t) => t[0] === "mobile.crane.site.noActiveSite");
+        expect(noSiteToasts).toHaveLength(1);
+        expect(noSiteToasts[0]?.[1]).toBe("NoSiteDoc");
+
+        const panel = getActiveMobilePlacementPanel();
+        expect(panel).toBeDefined();
+        expect(panel?.getObstacles()).toHaveLength(0);
+
+        panel?.dispose();
+    });
+
+    test("MobileCranePlacementPanel feeds adapted live site obstacles into M6 Clearance3DSection", () => {
+        const { view } = createSiteView(sampleDxf, "sample-site.dxf");
         const panel = new MobileCranePlacementPanel(view);
-        expect(panel.getSiteName()).toBe("sample-site.dxf");
         expect(panel.getObstacles().length).toBeGreaterThanOrEqual(7);
+
+        // Verify M6 Clearance3DSection receives these obstacles
+        const c3d = panel.getClearance3dSection();
+        expect(c3d).toBeDefined();
+        expect(c3d.getObstacles()).toEqual(panel.getObstacles());
+        expect(c3d.getObstacles().length).toBeGreaterThanOrEqual(7);
+
+        // Verify splitObstacles extracts buildings and power line from these live obstacles
+        const split = splitObstacles(c3d.getObstacles());
+        expect(split.buildings.length).toBeGreaterThanOrEqual(4); // Tower A, Tower B, Podium, Site Office
+        expect(split.powerLine).toBeDefined();
 
         panel.dispose();
     });

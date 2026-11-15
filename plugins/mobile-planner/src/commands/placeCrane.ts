@@ -20,6 +20,13 @@ import { MobileCranePlacementPanel } from "../ui/mobilePlacementPanel";
 
 let activePanel: MobileCranePlacementPanel | undefined;
 
+/**
+ * Returns the currently active placement panel, if open (for inspection & tests).
+ */
+export function getActiveMobilePlacementPanel(): MobileCranePlacementPanel | undefined {
+    return activePanel;
+}
+
 @command({
     key: "mobile.crane.place" as CommandKeys,
     icon: "icon-cog",
@@ -36,7 +43,7 @@ export class PlaceMobileCraneCommand implements ICommand {
         const site = loadPlacementObstacles(view.document);
 
         activePanel?.dispose();
-        const panel = new MobileCranePlacementPanel(view, site?.obstacles, site?.siteName);
+        const panel = new MobileCranePlacementPanel(view, site?.obstacles ?? [], site?.siteName);
         activePanel = panel;
         panel.onDispose(() => {
             if (activePanel === panel) activePanel = undefined;

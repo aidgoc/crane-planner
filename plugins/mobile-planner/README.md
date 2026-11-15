@@ -169,3 +169,9 @@ record and the traceable page-17 transcription.
   - `worstStep` and `anyCollision` still describe the sampled angles only.
 - **Memory:** CAD shapes live in the WASM heap and are not freed by the JavaScript garbage collector. `sweepSlew` builds the obstacle solids once (`prepareObstacles`), builds one boom solid per angle, and frees every solid it built (also when a check throws). `computeSiteClearance` frees its solids too. The intersection solid from the overlap test in `computeClearanceDistance` is freed. If you call `prepareObstacles` and `checkPreparedObstacles` yourself, call `dispose()` on the prepared obstacles when you are done.
 - **Function only.** The swing result is not shown in the UI yet.
+
+## M8 Live Site Obstacles & Placement Panel Integration
+
+- **Live Site Obstacles:** Wires active project site obstacles (from the Site Model plugin DXF import) directly into the mobile placement panel via `hasSiteSource` / `readSiteSource` / `loadSiteProjectFromDxf`.
+- **Zero Fallback & Fail-Safe:** If no site model is loaded in the active project document, no fallback sample site is used; obstacle clearances report `NOT_CHECKED`, and the overall verdict reports `INCOMPLETE` (not `ALL PASS`).
+- **Re-running Command After Site Import:** If someone imports a new site DXF while the mobile crane placement panel is open, the panel keeps the obstacles from when it was opened. The "Place Mobile Crane" command must be re-run after a site import to reload the newly imported site obstacles (same known limitation as Tower Planner).

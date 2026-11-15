@@ -69,6 +69,7 @@ const MobilePlannerPlugin: Plugin = {
     ],
 };
 
+export { getActiveMobilePlacementPanel, PlaceMobileCraneCommand } from "./commands/placeCrane";
 export { calculateLiftCheck } from "./modules/liftCheck";
 export * from "./modules/siteObstacleAdapter";
 export * from "./ui/groundBearingPanel";

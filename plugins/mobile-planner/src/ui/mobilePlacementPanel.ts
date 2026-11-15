@@ -163,6 +163,7 @@ export class MobileCranePlacementPanel {
         this.root = this.buildLayout();
         this.bindInputs();
         this.initCraneMarkerNode();
+        this.refresh();
     }
 
     /** Set site obstacles and recompute. */

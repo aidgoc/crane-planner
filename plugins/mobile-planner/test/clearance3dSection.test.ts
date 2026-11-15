@@ -280,7 +280,7 @@ test("the placement panel contains the M6/M7 section and fills it from the sampl
     };
     PubSub.default.sub("showFloatPanel", handler);
     try {
-        const panel = new MobileCranePlacementPanel(createMockView());
+        const panel = new MobileCranePlacementPanel(createMockView(), SAMPLE_SITE_OBSTACLES);
         panel.show();
         expect(content).toBeDefined();
         const html = content?.textContent ?? "";
