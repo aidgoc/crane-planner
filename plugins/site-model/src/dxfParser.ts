@@ -378,7 +378,9 @@ export function parseDxfToSite(dxfContent: string, options?: ParseDxfOptions): S
     for (const { layer, verts, label } of labelledPolys) {
         const id = labelToId(label);
         const rawHeight = heightFromLabel(label);
-        const height = options?.buildingHeights?.[id] ?? rawHeight ?? 10.0;
+        // `null` means "height unknown" — NEVER default to 10 m or any invented value.
+        // The M6 3D clearance engine marks null-height buildings as NOT_CHECKED.
+        const height: number | null = options?.buildingHeights?.[id] ?? rawHeight ?? null;
 
         if (layer === "SUPPLY_ZONE") {
             supplyZones[id] = { id, layer, label, polygon: verts, height_m: 0 };
