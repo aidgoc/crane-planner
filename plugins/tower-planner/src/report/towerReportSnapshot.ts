@@ -233,7 +233,7 @@ function mapOversail(report: TowerPlanState["oversailReport"]): TowerReportOvers
 
 function mapHeight(
     report: TowerPlanState["heightReport"],
-    parameters: HeightParameters,
+    parameters: HeightParameters | undefined,
 ): TowerReportHeight | null {
     if (!report) return null;
     const results: TowerReportHeightResult[] = (report.results ?? []).map((result) => ({
@@ -247,7 +247,7 @@ function mapHeight(
         overallStatus: toMetricStatus(report.overallStatus),
         controllingBuilding: report.controllingBuilding ? { ...report.controllingBuilding } : undefined,
         tieInLevelsM: [...(report.tieInLevelsM ?? [])],
-        parameters: cloneHeightParameters(parameters),
+        ...(parameters ? { parameters: cloneHeightParameters(parameters) } : {}),
     };
 }
 
@@ -661,11 +661,18 @@ function buildSources(state: TowerPlanState, capacitySource: TowerReportSource):
         mapHeaviestErectionComponent(state.crane.heaviestErectionComponent, state.crane.sources),
         mapSourcedNumber("Selected jib length", state.jibM, state.crane.sources),
         capacitySource,
-        mapCraneDimension("Hook height (available)", state.heightParameters.hookHeight),
-        mapCraneDimension("Hook clearance", state.heightParameters.hookClearance),
-        mapCraneDimension("Freestanding height", state.heightParameters.freestandingHeight),
-        mapCraneDimension("Tie-in spacing", state.heightParameters.tieInSpacing),
     );
+
+    // A Pick Check report has no T9 parameters. Only generate these entries when
+    // the caller actually supplied the planned values; never substitute defaults.
+    if (state.heightParameters) {
+        sources.push(
+            mapCraneDimension("Hook height (available)", state.heightParameters.hookHeight),
+            mapCraneDimension("Hook clearance", state.heightParameters.hookClearance),
+            mapCraneDimension("Freestanding height", state.heightParameters.freestandingHeight),
+            mapCraneDimension("Tie-in spacing", state.heightParameters.tieInSpacing),
+        );
+    }
 
     return sources;
 }
@@ -719,7 +726,10 @@ export function buildTowerReportSnapshot(state: TowerPlanState): TowerReportSnap
     const picks = (evaluation?.picks ?? []).map(mapPick);
     const oversail = mapOversail(state.oversailReport);
     const height = mapHeight(state.heightReport, state.heightParameters);
-    const heightParameters = cloneHeightParameters(state.heightParameters);
+    const heightParameters = state.heightParameters
+        ? cloneHeightParameters(state.heightParameters)
+        : undefined;
+    const slewAngleDeg = state.placement.slewAngleDeg;
     const site = hasUsableSite(state.site) ? cloneSite(state.site) : null;
     const evaluationIssues = findEvaluationIssues(state, evaluation, picks);
     const oversailSection = oversailDisclosure(oversail);
@@ -755,7 +765,7 @@ export function buildTowerReportSnapshot(state: TowerPlanState): TowerReportSnap
         placement: {
             x: state.placement.x,
             y: state.placement.y,
-            slewAngleDeg: state.placement.slewAngleDeg,
+            ...(typeof slewAngleDeg === "number" && Number.isFinite(slewAngleDeg) ? { slewAngleDeg } : {}),
         },
         jibM: state.jibM.value,
         windKmh: state.windKmh,
@@ -764,7 +774,7 @@ export function buildTowerReportSnapshot(state: TowerPlanState): TowerReportSnap
         picks,
         oversail,
         height,
-        heightParameters,
+        ...(heightParameters ? { heightParameters } : {}),
 
         verdict: verdictFromStatuses(
             collectVerdictStatuses(state, picks, oversail, height, evaluationIssues),

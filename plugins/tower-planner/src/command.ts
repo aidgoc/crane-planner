@@ -9,7 +9,7 @@ import {
     type ICommand,
     PubSub,
 } from "@chili3d/core";
-import { div, input, label, p, select } from "@chili3d/element";
+import { button, div, input, label, p, select } from "@chili3d/element";
 import { WIND_DERATE_RULE } from "./capacity";
 import { getCraneById, MCT88, TOWER_CRANES } from "./catalogue";
 import { PLANNING_DISCLAIMER } from "./disclaimer";
@@ -24,6 +24,14 @@ import {
     type PickRadiusSource,
     type PickStatus,
 } from "./pickEngine";
+import {
+    capturePickCheckSession,
+    clearPickCheckSession,
+    type PickCheckCaptureIssue,
+    type PickCheckSessionDraft,
+    readPickCheckSession,
+    validatePickCheckCapture,
+} from "./report/towerPickSession";
 import { loadSampleSitePicks } from "./sampleSite";
 import {
     buildSelectionMatrix,
@@ -103,6 +111,16 @@ const GOVERNING_I18N: Record<PickRadiusSource, TowerI18nKey> = {
     supply: "tower.dialog.governingSupply",
     drop: "tower.dialog.governingDrop",
     legacy: "tower.dialog.governingLegacy",
+};
+
+const CAPTURE_ISSUE_TEXT: Record<PickCheckCaptureIssue, string> = {
+    "no-picks": "Not captured: add at least one pick.",
+    "invalid-jib": "Not captured: enter a finite jib length.",
+    "invalid-mast": "Not captured: enter finite mast X and Y coordinates.",
+    "invalid-wind": "Not captured: wind must be blank or a finite non-negative number.",
+    "invalid-pick": "Not captured: every pick load and supply/drop coordinate must be a finite number.",
+    "invalid-evaluation":
+        "Not captured: the selected-crane evaluation contains INVALID picks. Correct them first.",
 };
 
 const REASON_I18N: Record<SelectionReason, TowerI18nKey> = {
@@ -206,7 +224,8 @@ function pointValue(point: PickPoint | undefined, axis: "x" | "y"): string {
     helpText: "tower.description",
 })
 export class TowerPickCheckCommand implements ICommand {
-    execute(_application: IApplication): Promise<void> {
+    execute(application: IApplication): Promise<void> {
+        const activeDocument = application.activeView?.document;
         const content = div();
         content.style.display = "grid";
         content.style.gap = "10px";
@@ -361,9 +380,46 @@ export class TowerPickCheckCommand implements ICommand {
 
         table.append(header, body);
 
+        const restoredSession =
+            activeDocument === undefined ? undefined : readPickCheckSession(activeDocument);
+        if (restoredSession !== undefined) {
+            const restoredCrane = getCraneById(restoredSession.crane.id);
+            if (restoredCrane !== undefined) craneSelect.value = restoredCrane.id;
+
+            jibInput.value = String(restoredSession.jibM.value);
+            mastXInput.value = String(restoredSession.mast.x);
+            mastYInput.value = String(restoredSession.mast.y);
+            windInput.value = restoredSession.windKmh === null ? "" : String(restoredSession.windKmh);
+
+            restoredSession.picks.forEach((pick, index) => {
+                const row = rows[index];
+                if (row === undefined) return;
+                row.load.value = String(pick.loadT);
+                row.supplyX.value = pointValue(pick.supply, "x");
+                row.supplyY.value = pointValue(pick.supply, "y");
+                row.dropX.value = pointValue(pick.drop, "x");
+                row.dropY.value = pointValue(pick.drop, "y");
+            });
+        }
+
         const summary = p();
         summary.style.fontWeight = "600";
         summary.style.margin = "0";
+
+        const captureButton = button("Capture for report");
+        captureButton.type = "button";
+        captureButton.setAttribute("data-role", "capture-session");
+
+        const captureStatus = p();
+        captureStatus.setAttribute("data-role", "capture-status");
+        captureStatus.style.margin = "0";
+        captureStatus.style.fontSize = "12px";
+
+        const captureActions = div();
+        captureActions.style.display = "flex";
+        captureActions.style.gap = "10px";
+        captureActions.style.alignItems = "center";
+        captureActions.append(captureButton, captureStatus);
 
         const matrixTitle = p(t("tower.matrix.title"));
         matrixTitle.style.fontWeight = "700";
@@ -515,10 +571,35 @@ export class TowerPickCheckCommand implements ICommand {
             }));
         }
 
-        function readMast(): PickPoint | undefined {
-            const x = readNumber(mastXInput);
-            const y = readNumber(mastYInput);
-            return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined;
+        function readMastDraft(): PickPoint {
+            return { x: readNumber(mastXInput), y: readNumber(mastYInput) };
+        }
+
+        /**
+         * Read wind without turning a blank field into zero. Malformed input is
+         * NaN so the engine and capture validation both reject it.
+         */
+        function readWindKmh(): number | null {
+            if (windInput.validity.badInput) return Number.NaN;
+            const text = windInput.value.trim();
+            return text === "" ? null : Number(text);
+        }
+
+        function setCaptureStatus(
+            state: "captured" | "not-captured" | "invalid" | "unavailable",
+            text: string,
+        ): void {
+            captureStatus.textContent = text;
+            captureStatus.setAttribute("data-capture-state", state);
+            captureStatus.setAttribute("data-captured", String(state === "captured"));
+            captureStatus.style.color =
+                state === "captured" ? "#1b7f3a" : state === "invalid" ? "#b42318" : "#8a5a00";
+        }
+
+        function invalidateCapturedSession(): void {
+            if (activeDocument === undefined) return;
+            clearPickCheckSession(activeDocument);
+            setCaptureStatus("not-captured", "Not captured. Inputs changed; capture again.");
         }
 
         function renderMatrixCell(cell: HTMLTableCellElement, result: PickEvaluation): void {
@@ -662,21 +743,13 @@ export class TowerPickCheckCommand implements ICommand {
             }
         }
 
-        function recalculate(): void {
+        function recalculate(): CraneEvaluation {
             const crane = selectedCrane();
             const jibM = readNumber(jibInput);
-            const windText = windInput.value.trim();
-            // Chromium reports malformed or incomplete numeric entries such as
-            // "1e" as an empty value with badInput set. That is invalid wind,
-            // not the genuine empty field that means "no wind derate".
-            let windKmh: number | null;
-            if (windInput.validity.badInput) {
-                windKmh = Number.NaN;
-            } else {
-                windKmh = windText === "" ? null : Number(windText);
-            }
+            const windKmh = readWindKmh();
             const picks = readPicks();
-            const mast = readMast();
+            const mastDraft = readMastDraft();
+            const mast = Number.isFinite(mastDraft.x) && Number.isFinite(mastDraft.y) ? mastDraft : undefined;
             const evaluation = evaluateCrane(crane, picks, {
                 jibM,
                 windKmh,
@@ -710,9 +783,42 @@ export class TowerPickCheckCommand implements ICommand {
             // the selected-crane jib input above only drives the detail table.
             const matrix = buildSelectionMatrix(TOWER_CRANES, picks, { windKmh, mast });
             renderMatrix(matrix);
+            return evaluation;
         }
 
+        captureButton.addEventListener("click", () => {
+            if (activeDocument === undefined) return;
+
+            // Re-read and re-evaluate the current inputs, then validate the
+            // selected-crane result before writing anything.
+            const evaluation = recalculate();
+            const draft: PickCheckSessionDraft = {
+                crane: selectedCrane(),
+                jibM: readNumber(jibInput),
+                windKmh: readWindKmh(),
+                mast: readMastDraft(),
+                picks: readPicks(),
+                evaluation,
+            };
+
+            const issue = validatePickCheckCapture(draft);
+            if (issue !== undefined) {
+                clearPickCheckSession(activeDocument);
+                setCaptureStatus("invalid", CAPTURE_ISSUE_TEXT[issue]);
+                return;
+            }
+
+            if (capturePickCheckSession(activeDocument, draft) === undefined) {
+                clearPickCheckSession(activeDocument);
+                setCaptureStatus("invalid", CAPTURE_ISSUE_TEXT["invalid-evaluation"]);
+                return;
+            }
+
+            setCaptureStatus("captured", "Captured for report.");
+        });
+
         craneSelect.addEventListener("change", () => {
+            invalidateCapturedSession();
             const crane = selectedCrane();
             jibInput.value = String(crane.defaultJibM.value);
             updateCraneNotes(crane);
@@ -720,15 +826,36 @@ export class TowerPickCheckCommand implements ICommand {
         });
         for (const row of rows) {
             for (const element of [row.load, row.supplyX, row.supplyY, row.dropX, row.dropY]) {
-                element.addEventListener("input", recalculate);
+                element.addEventListener("input", () => {
+                    invalidateCapturedSession();
+                    recalculate();
+                });
             }
         }
         for (const element of [jibInput, mastXInput, mastYInput, windInput]) {
-            element.addEventListener("input", recalculate);
+            element.addEventListener("input", () => {
+                invalidateCapturedSession();
+                recalculate();
+            });
         }
 
         updateCraneNotes(selectedCrane());
         recalculate();
+
+        if (activeDocument === undefined) {
+            captureButton.disabled = true;
+            setCaptureStatus(
+                "unavailable",
+                "Capture for report is unavailable because no document is active. The calculator remains usable, but nothing can be saved for a report.",
+            );
+        } else if (restoredSession !== undefined) {
+            setCaptureStatus("captured", "Captured for report.");
+        } else {
+            setCaptureStatus(
+                "not-captured",
+                "Not captured. Click Capture for report after the selected-crane check is valid.",
+            );
+        }
 
         content.append(
             disclaimer,
@@ -736,6 +863,7 @@ export class TowerPickCheckCommand implements ICommand {
             controls,
             table,
             summary,
+            captureActions,
             matrixTitle,
             matrixHint,
             matrixSummary,

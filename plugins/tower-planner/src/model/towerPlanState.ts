@@ -4,9 +4,19 @@
 import type { ReportAssumption } from "../../../site-model/src/report";
 import type { CraneEvaluation, PickEvaluation, PickStatus } from "../pickEngine";
 import type { SourcedNumber, TowerCrane } from "../types";
-import type { CranePlacement } from "./cranePlacement";
 import type { HeightCheckReport, HeightParameters } from "./heightTypes";
 import type { OversailReport, OversailSite } from "./oversailTypes";
+
+/**
+ * Report-facing plan placement. Mast coordinates are required, but slew is
+ * optional because a Pick Check report does not evaluate slew and must not
+ * invent one. `CranePlacement` remains the stricter Placement Panel contract.
+ */
+export interface TowerPlanPlacement {
+    readonly x: number;
+    readonly y: number;
+    readonly slewAngleDeg?: number;
+}
 
 /** Report metadata supplied by the caller. The date is never read from the clock. */
 export interface TowerPlanMetadata {
@@ -61,14 +71,15 @@ export interface TowerPlanState {
     readonly siteProvenance: TowerPlanSiteProvenance;
 
     readonly crane: TowerCrane;
-    readonly placement: CranePlacement;
+    readonly placement: TowerPlanPlacement;
     readonly jibM: SourcedNumber;
     readonly windKmh: number | null;
 
     readonly craneEvaluation: TowerPlanCraneEvaluation;
     readonly oversailReport: OversailReport | null;
     readonly heightReport: HeightCheckReport | null;
-    readonly heightParameters: HeightParameters;
+    /** Required when `heightReport` is present; absent when T9 was not evaluated. */
+    readonly heightParameters?: HeightParameters;
 
     readonly notes?: readonly string[];
     readonly assumptions?: readonly ReportAssumption[];

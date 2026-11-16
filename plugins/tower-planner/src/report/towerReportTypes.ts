@@ -7,11 +7,13 @@ import type {
     SourceStatus,
     VerdictStatus,
 } from "../../../site-model/src/report";
-import type { CranePlacement } from "../model/cranePlacement";
 import type { HeightCheckReport, HeightCheckResult, HeightParameters } from "../model/heightTypes";
 import type { OversailCheckResult, OversailSite } from "../model/oversailTypes";
-import type { TowerPlanMetadata, TowerPlanPickEvaluation } from "../model/towerPlanState";
+import type { TowerPlanMetadata, TowerPlanPickEvaluation, TowerPlanPlacement } from "../model/towerPlanState";
 import type { TowerCrane } from "../types";
+
+/** Report placement: mast X/Y are required; slew is absent when not evaluated. */
+export type TowerReportPlacement = TowerPlanPlacement;
 
 /**
  * One attribution in the snapshot. This is deliberately not S7's `ReportSource`
@@ -62,7 +64,8 @@ export interface TowerReportOversail {
 export type TowerReportHeight = Readonly<Omit<HeightCheckReport, "overallStatus" | "results">> & {
     readonly overallStatus: MetricStatus;
     readonly results: readonly TowerReportHeightResult[];
-    readonly parameters: HeightParameters;
+    /** Present only when the caller supplied the four planned T9 parameters. */
+    readonly parameters?: HeightParameters;
 };
 
 /** One row for the report's failed/unresolved-checks section. */
@@ -92,7 +95,7 @@ export interface TowerReportSnapshot {
     readonly siteSource: TowerReportSource | null;
 
     readonly crane: TowerCrane;
-    readonly placement: CranePlacement;
+    readonly placement: TowerReportPlacement;
     readonly jibM: number;
     readonly windKmh: number | null;
     readonly evaluation: TowerReportEvaluation;
@@ -100,8 +103,8 @@ export interface TowerReportSnapshot {
     readonly picks: readonly TowerReportPick[];
     readonly oversail: TowerReportOversail | null;
     readonly height: TowerReportHeight | null;
-    /** Always present, even when no T9 report was supplied. */
-    readonly heightParameters: HeightParameters;
+    /** Absent when the caller supplied no T9 planned parameters. */
+    readonly heightParameters?: HeightParameters;
 
     readonly verdict: VerdictStatus;
     readonly failedChecks: readonly TowerReportCheck[];

@@ -4,10 +4,11 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { I18n, type I18nKeys, type IApplication, PubSub } from "@chili3d/core";
+import { CommandStore, I18n, type I18nKeys, type IApplication, PubSub } from "@chili3d/core";
 import { getCraneById, JASO_2R, JASO_TD, MCT85F5, MCT88, TOWER_CRANES } from "../src/catalogue";
 import { craneDialogNotes, TowerPickCheckCommand } from "../src/command";
 import { PlaceTowerCraneCommand } from "../src/commands/placeCrane";
+import { TowerPickReportCommand } from "../src/commands/towerPickReport";
 import { PLANNING_DISCLAIMER } from "../src/disclaimer";
 import { en } from "../src/i18n/en";
 import TowerPlannerPlugin from "../src/index";
@@ -28,14 +29,23 @@ function installEnglishLocale(): () => void {
 }
 
 describe("tower-planner plugin wiring", () => {
-    test("registers both commands, both ribbon items and English resources", () => {
-        expect(TowerPlannerPlugin.commands).toEqual([TowerPickCheckCommand, PlaceTowerCraneCommand]);
+    test("registers all commands, all ribbon items and English resources", () => {
+        expect(TowerPlannerPlugin.commands).toEqual([
+            TowerPickCheckCommand,
+            TowerPickReportCommand,
+            PlaceTowerCraneCommand,
+        ]);
+
+        expect(CommandStore.getCommand("tower.report")).toBe(TowerPickReportCommand);
+        expect(CommandStore.getComandData("tower.report")?.icon).toBe("icon-export");
+        expect(CommandStore.getComandData("tower.report")?.helpText).toBe("tower.report.help");
 
         const pickRibbon = TowerPlannerPlugin.ribbons?.find(
             (ribbon) => ribbon.tabName === "ribbon.tab.plugin",
         );
         expect(pickRibbon).toBeDefined();
         expect(pickRibbon?.groups[0].items).toContain("tower.pick");
+        expect(pickRibbon?.groups[0].items).toContain("tower.report");
 
         const placementRibbon = TowerPlannerPlugin.ribbons?.find(
             (ribbon) => ribbon.tabName === "ribbon.tab.manager",
@@ -46,6 +56,7 @@ describe("tower-planner plugin wiring", () => {
         const locale = TowerPlannerPlugin.i18nResources?.[0];
         expect(locale?.language).toBe("en");
         expect(locale?.translation["command.tower.pick"]).toBe("Tower Pick Check");
+        expect(locale?.translation["command.tower.report"]).toBe("Tower Pick Report");
         expect(locale?.translation["towerplanner.place"]).toBe("Place Tower Crane");
     });
 
@@ -53,6 +64,7 @@ describe("tower-planner plugin wiring", () => {
         expect(PLANNING_DISCLAIMER).toBe("Planning aid, not a certified lift plan.");
         expect(TowerPlannerPlugin.guide?.[0].content).toContain(PLANNING_DISCLAIMER);
         expect(TowerPlannerPlugin.guide?.[0].content).toContain("selection matrix");
+        expect(TowerPlannerPlugin.guide?.[0].content).toContain("Tower Pick Report");
     });
 
     test("exposes the MCT 88 with sourced values", () => {
