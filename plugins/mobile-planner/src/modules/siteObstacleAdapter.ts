@@ -40,7 +40,7 @@ export function adaptSiteProjectToObstacles(project: SiteProject): SiteObstacle[
                 obstacles.push({
                     label,
                     polygon: poly,
-                    heightM: building.height_m,
+                    heightM: building.height_m ?? undefined,
                     requiredClearanceM: DEFAULT_BUILDING_CLEARANCE_M,
                 });
             }
