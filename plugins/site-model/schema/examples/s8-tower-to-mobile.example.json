@@ -1,0 +1,70 @@
+{
+    "schema_version": "1.0.0",
+    "handoff_id": "S8-DEMO-003",
+    "created_at": "2026-11-07T10:00:00Z",
+    "units": {
+        "length": "m",
+        "mass": "t",
+        "angle": "deg"
+    },
+    "coordinate_frame": {
+        "id": "DEMO-SITE-FRAME",
+        "origin": {
+            "description": "South-west corner of the synthetic site"
+        },
+        "x_axis": "east",
+        "y_axis": "north",
+        "z_axis": "up"
+    },
+    "site": {
+        "site_id": "DEMO-SITE",
+        "name": "Synthetic Demonstration Site"
+    },
+    "tower_crane": {
+        "crane_id": "TC-DEMO-01",
+        "model_id": "MODEL-DEMO",
+        "name": "Synthetic Tower Crane",
+        "configuration": {
+            "jib_length_m": 30
+        },
+        "mast_position": {
+            "x_m": 20,
+            "y_m": 15
+        }
+    },
+    "lifts": [
+        {
+            "lift_id": "LIFT-DEMO-001",
+            "purpose": "tower_erection",
+            "component": {
+                "name": "Synthetic steel assembly",
+                "mass_t": 2.4,
+                "mass_basis": "payload_only",
+                "mass_source": {
+                    "kind": "synthetic_example",
+                    "document": "Synthetic demonstration specification",
+                    "page": 1,
+                    "reference": "Illustrative example only"
+                }
+            },
+            "pick_xy": {
+                "x_m": 24,
+                "y_m": 18
+            },
+            "set_xy": {
+                "x_m": 12,
+                "y_m": 28
+            },
+            "rigging_mass_t": null,
+            "coordinate_source": "synthetic_example"
+        }
+    ],
+    "issues": [
+        {
+            "severity": "warning",
+            "code": "RIGGING_MASS_NOT_PROVIDED",
+            "message": "Rigging mass must be supplied or confirmed before a definitive mobile lift assessment.",
+            "field": "lifts[0].rigging_mass_t"
+        }
+    ]
+}

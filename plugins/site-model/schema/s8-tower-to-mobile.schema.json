@@ -1,0 +1,360 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "S8 Tower-to-Mobile Handoff",
+    "description": "S8 v1.0.0 contract for transferring lift data from Tower Planner to Mobile Planner. Planning aid, not a certified lift plan. Tower Planner supplies tower/component/location context only and must not include Mobile Planner PASS/FAIL assessments. Mobile Planner converts the absolute site coordinates to its own crane-relative frame and performs its own M2 assessment. A null rigging_mass_t is structurally valid and means unknown, never zero: Mobile Planner must treat it as INCOMPLETE before invoking calculateLiftCheck and must not pass null into M2. INCOMPLETE is a Mobile runtime/interface outcome, not an M2 result; M2 outcomes remain PASS, FAIL and UNSUPPORTED. JSON Schema does not require a non-empty issues array solely because rigging_mass_t is null; generating the appropriate missing-information issue is a Tower producer/runtime responsibility.",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "schema_version",
+        "handoff_id",
+        "created_at",
+        "units",
+        "coordinate_frame",
+        "tower_crane",
+        "lifts",
+        "issues"
+    ],
+    "properties": {
+        "schema_version": {
+            "const": "1.0.0",
+            "description": "S8 contract version."
+        },
+        "handoff_id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Identity of this handoff payload."
+        },
+        "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "ISO 8601 timestamp at which the handoff was created."
+        },
+        "units": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["length", "mass", "angle"],
+            "properties": {
+                "length": {
+                    "const": "m"
+                },
+                "mass": {
+                    "const": "t"
+                },
+                "angle": {
+                    "const": "deg"
+                }
+            },
+            "description": "Fixed S8 units: metres, tonnes and degrees. Mass values in this payload are tonnes; keep them distinct from any internal millimetre model values."
+        },
+        "coordinate_frame": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "origin", "x_axis", "y_axis", "z_axis"],
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Identity of the project-declared absolute site frame."
+                },
+                "origin": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["description"],
+                    "properties": {
+                        "description": {
+                            "type": "string",
+                            "minLength": 1,
+                            "description": "Project-specific origin declaration, e.g. the south-west corner of the site. It must not be treated as a universal origin."
+                        }
+                    }
+                },
+                "x_axis": {
+                    "const": "east"
+                },
+                "y_axis": {
+                    "const": "north"
+                },
+                "z_axis": {
+                    "const": "up"
+                }
+            },
+            "description": "Absolute site frame in metres: +X east, +Y north, +Z up. All pick_xy and set_xy values use this frame, not a crane-relative frame. Tower crane slew is a Tower Planner property and must never be interpreted as the Mobile Planner boom angle."
+        },
+        "site": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["site_id", "name"],
+            "properties": {
+                "site_id": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "name": {
+                    "type": "string",
+                    "minLength": 1
+                }
+            },
+            "description": "Optional site identification context."
+        },
+        "tower_crane": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["crane_id", "configuration"],
+            "properties": {
+                "crane_id": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Tower crane identity."
+                },
+                "model_id": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "name": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "configuration": {
+                    "type": "object",
+                    "required": ["jib_length_m"],
+                    "properties": {
+                        "jib_length_m": {
+                            "type": "number",
+                            "exclusiveMinimum": 0,
+                            "description": "Tower crane jib length in metres."
+                        }
+                    },
+                    "description": "Tower Planner configuration context. Additional tower configuration fields may be supplied; this is not a Mobile crane configuration."
+                },
+                "mast_position": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["x_m", "y_m"],
+                    "properties": {
+                        "x_m": {
+                            "type": "number"
+                        },
+                        "y_m": {
+                            "type": "number"
+                        }
+                    },
+                    "description": "Absolute site-frame tower mast position in metres. Tower context only; it is not the selected Mobile crane position."
+                }
+            },
+            "description": "Tower crane identity and configuration context. Tower Planner must not provide Mobile crane configuration, capacity, utilisation or PASS/FAIL results."
+        },
+        "lifts": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "$ref": "#/$defs/lift"
+            }
+        },
+        "issues": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/issue"
+            },
+            "description": "Warnings or missing-information notices. Missing or insufficient information must be reported here rather than silently replaced with a default. A null rigging_mass_t is structurally valid; this schema does not require a non-empty issues array solely because rigging_mass_t is null, so the Tower producer/runtime is responsible for generating the appropriate issue. The Mobile consumer must still treat a null rigging mass as INCOMPLETE before invoking calculateLiftCheck, and calculateLiftCheck must never receive null rigging mass. The same producer/runtime issue-reporting expectation applies when component.mass_t is null with mass_source.kind 'not_stated'."
+        }
+    },
+    "$defs": {
+        "siteCoordinate": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["x_m", "y_m"],
+            "properties": {
+                "x_m": {
+                    "type": "number",
+                    "description": "Absolute east coordinate in metres (+X east)."
+                },
+                "y_m": {
+                    "type": "number",
+                    "description": "Absolute north coordinate in metres (+Y north)."
+                }
+            },
+            "description": "Absolute project-declared site coordinate in metres. S8 must not send pre-converted Mobile crane-relative points."
+        },
+        "massSource": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind"],
+            "properties": {
+                "kind": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Source classification. 'not_stated' is only valid when component.mass_t is null; any numeric mass needs a traceable source other than 'not_stated'. 'not_stated' declares the absence of a mass value; it does not itself create an issue record, and this schema does not require a non-empty issues array for the null case."
+                },
+                "document": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Source document name or identifier."
+                },
+                "page": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "description": "Page reference within the source document."
+                },
+                "section": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Section reference within the source document."
+                },
+                "reference": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Optional additional reference or note."
+                }
+            },
+            "description": "Traceable provenance for component mass. A numeric mass requires a document and a page or section reference. For a null mass, mass_source is still required and kind must be 'not_stated'; document, page and section are not required for that null declaration. The schema does not require an issues entry solely because the mass is null; the Tower producer/runtime is responsible for reporting the missing information."
+        },
+        "component": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "mass_t", "mass_basis", "mass_source"],
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Component identity."
+                },
+                "mass_t": {
+                    "type": ["number", "null"],
+                    "exclusiveMinimum": 0,
+                    "description": "Component payload mass only, in tonnes. Excludes rigging mass. Numeric values must be positive; use null when the mass is not stated, never zero as a placeholder. A null value is only permitted with mass_source.kind 'not_stated'. A null mass is structurally valid and must never be interpreted as zero. This schema does not require a non-empty issues array solely because mass_t is null; the Tower producer/runtime is responsible for generating the appropriate missing-information issue. Consumers must not substitute a default or proceed with a definitive assessment until the payload mass is provided or confirmed."
+                },
+                "mass_basis": {
+                    "const": "payload_only",
+                    "description": "Confirms that mass_t is component payload only and excludes rigging mass."
+                },
+                "mass_source": {
+                    "$ref": "#/$defs/massSource"
+                }
+            },
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "mass_t": {
+                                "type": "null"
+                            }
+                        },
+                        "required": ["mass_t"]
+                    },
+                    "then": {
+                        "properties": {
+                            "mass_source": {
+                                "type": "object",
+                                "properties": {
+                                    "kind": {
+                                        "const": "not_stated"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                {
+                    "if": {
+                        "properties": {
+                            "mass_t": {
+                                "type": "number"
+                            }
+                        },
+                        "required": ["mass_t"]
+                    },
+                    "then": {
+                        "properties": {
+                            "mass_source": {
+                                "type": "object",
+                                "properties": {
+                                    "kind": {
+                                        "not": {
+                                            "const": "not_stated"
+                                        }
+                                    }
+                                },
+                                "required": ["document"],
+                                "anyOf": [
+                                    { "type": "object", "required": ["page"] },
+                                    { "type": "object", "required": ["section"] }
+                                ]
+                            }
+                        }
+                    }
+                }
+            ],
+            "description": "Component payload and its traceable mass provenance. mass_t never includes rigging mass. A null mass_t is valid only with mass_source.kind 'not_stated'; it is not zero and is not made structurally invalid by an empty issues array."
+        },
+        "lift": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "lift_id",
+                "purpose",
+                "component",
+                "pick_xy",
+                "set_xy",
+                "rigging_mass_t",
+                "coordinate_source"
+            ],
+            "properties": {
+                "lift_id": {
+                    "type": "string",
+                    "minLength": 1
+                },
+                "purpose": {
+                    "enum": ["tower_erection", "dismantling", "site_material_handling"],
+                    "description": "Supported S8 lift purposes."
+                },
+                "component": {
+                    "$ref": "#/$defs/component"
+                },
+                "pick_xy": {
+                    "$ref": "#/$defs/siteCoordinate"
+                },
+                "set_xy": {
+                    "$ref": "#/$defs/siteCoordinate"
+                },
+                "rigging_mass_t": {
+                    "type": ["number", "null"],
+                    "minimum": 0,
+                    "description": "Rigging mass in tonnes, separate from component.mass_t. A non-negative number or null is structurally valid; null means unknown or unconfirmed, never zero. A numeric 0 is structurally valid but is a deliberate value meaning no rigging mass; it must never be used as a placeholder for unknown, which is null. A null value does not by itself make the payload structurally invalid, and this schema does not require a non-empty issues array solely because rigging_mass_t is null; generating the appropriate missing-information issue is a Tower producer/runtime responsibility. Mobile Planner must treat null as INCOMPLETE at the runtime/interface level before calculateLiftCheck is invoked. calculateLiftCheck must never receive a null rigging mass. INCOMPLETE is a runtime/interface assessment state, not a new M2 calculation outcome; M2 outcomes remain PASS, FAIL and UNSUPPORTED. Mobile must obtain or confirm a numeric rigging mass and include it in the total suspended load before any definitive assessment; once all required numeric inputs are present, it may invoke the existing M2 calculateLiftCheck."
+                },
+                "coordinate_source": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Provenance of the absolute pick/set coordinates."
+                }
+            },
+            "description": "One lift. Pick and set points are absolute site coordinates; Mobile Planner converts them to its own crane-relative frame before M2 assessment. rigging_mass_t is required but may be null; a null value is structurally valid and is handled as INCOMPLETE by Mobile runtime before calculateLiftCheck."
+        },
+        "issue": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["severity", "code", "message"],
+            "properties": {
+                "severity": {
+                    "enum": ["info", "warning"],
+                    "description": "Warning or informational missing-information notice. Structural violations are schema errors, not issue records."
+                },
+                "code": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Stable machine-readable issue code, e.g. RIGGING_MASS_NOT_PROVIDED."
+                },
+                "message": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Human-readable description of the warning or missing information."
+                },
+                "field": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "Optional reference to the affected field path, e.g. lifts[0].rigging_mass_t."
+                }
+            },
+            "description": "Warning or missing-information notice. Issues do not represent a Mobile Planner PASS/FAIL assessment."
+        }
+    }
+}
