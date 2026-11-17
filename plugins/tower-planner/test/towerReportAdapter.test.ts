@@ -96,6 +96,8 @@ function reportPick(overrides: Partial<TowerReportPick> = {}): TowerReportPick {
         capacityT: 5,
         utilisationPct: 20,
         status: "PASS",
+        supply: { x: 50, y: 40 },
+        drop: { x: 30, y: 60 },
         ...overrides,
     };
 }
@@ -259,6 +261,17 @@ describe("T10-2 tower report S7 adapter", () => {
             author: "Test Engineer",
             product: "tower-planner",
         });
+        expect(data.planView).toBeDefined();
+        expect(data.planView?.imageDataUrl).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
+        expect(data.planView?.scaleText).toBe("Schematic — not to scale");
+    });
+
+    test("omits the plan view when pick coordinates are unavailable", () => {
+        const pick = reportPick();
+        const data = buildTowerReportData(
+            baseSnapshot({ picks: [{ ...pick, supply: undefined, drop: undefined }] }),
+        );
+
         expect(data.planView).toBeUndefined();
     });
 

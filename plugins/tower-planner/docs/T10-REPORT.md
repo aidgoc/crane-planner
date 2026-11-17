@@ -15,6 +15,11 @@ A later additive amendment allows a truthful Pick Check-only report. Report
 placement may omit slew, and T9 planned height parameters may be omitted when
 T9 was not evaluated.
 
+A follow-up amendment adds a schematic plan-view image. It uses the mast
+position, the governing hook-radius rings and the captured supply/set-down
+coordinates; it deliberately shows no jib orientation, swing path, clearance or
+site boundary.
+
 ## Scope
 
 T10-1 provides:
@@ -162,6 +167,44 @@ document's session or a fresh calculation.
    second HTML renderer and no PDF implementation. A blocked popup shows a toast
    saying no report was generated; a thrown print error shows the failure toast.
    Cancelling opens no window and leaves the captured session unchanged.
+
+## Plan view (follow-up)
+
+The report supplies S7's existing `ReportData.planView.imageDataUrl` with a
+small, deterministic SVG built by `buildTowerReportPlanView(snapshot)`. The plan
+view adds no check and no new number to the report:
+
+- **Source geometry.** The mast `(x, y)` comes from `placement`. One dashed
+  governing-radius ring per pick is drawn from its `radiusM`; `supplyRadiusM`
+  and `dropRadiusM` remain table-only values. Pick-up and set-down markers use
+  the genuine captured `PickCheckSession.picks[].supply` / `.drop` coordinates.
+  They are carried to the snapshot through optional
+  `TowerPlanState.pickCoordinates` and `TowerReportPick.supply` / `.drop`, in
+  the same order as the pick rows.
+- **Schematic, not to scale.** The image uses a fixed 720 × 480 viewport and
+  auto-fits the geometry with padding, so the scale changes per report. It is
+  labelled "Schematic — not to scale" in the SVG and in S7's scale line. Site
+  +X points right and site +Y points up; the screen Y axis is inverted. Worked
+  example used by the tests: mast `(0, 0)`, supply `(20, 0)`, drop `(0, 20)`
+  and governing radius `20 m` give a 40 m × 40 m content box; with the 56 px
+  padding the shared scale is `min(608 / 40, 368 / 40) = 9.2 px/m`, so the
+  mast, supply and drop land at `(360, 240)`, `(544, 240)` and `(360, 56)`. A
+  larger radius or a wider pick spread reduces the scale.
+- **No implied checks.** The rings are governing hook radii, not a verified
+  swing path. The image does not show jib orientation, clearance, a site
+  boundary or a T8/T9 result. Labels are the existing snapshot pick labels,
+  XML-escaped. The SVG contains no script, event handler, external reference or
+  `foreignObject`; S7 displays it through an `<img>` data URL.
+- **All-or-nothing.** The plan view is emitted only when the mast is finite and
+  every pick has a finite positive governing radius and finite supply/drop
+  coordinates. If any required value is missing, non-finite or misaligned with
+  the pick rows, the whole plan view is omitted. No point is placed from a
+  radius, no partial set is plotted and no default coordinate is substituted.
+  A radii-only snapshot still renders every section and its verdict unchanged,
+  without a plan view.
+- The plan view does not participate in the verdict. PASS / FAIL / INCOMPLETE /
+  NOT_CHECKED semantics, source provenance, assumptions, INDICATIVE labels and
+  the planning-aid disclaimer are unchanged.
 
 ## Status mapping
 
@@ -358,9 +401,13 @@ Additional limitations:
   and must be mapped deliberately; `notChecked` (pad reactions, general 3D
   distance, missing sections) must be rendered so a `PASS` is not presented as a
   fully checked result.
-- The snapshot does not render a plan view or SVG.
-- Pick coordinates and unsupported luffing-jib handling depend on work landing
-  separately; this snapshot preserves whatever status the evaluation supplies.
+- The snapshot itself does not render the plan view. The T10-2 adapter adds a
+  schematic SVG data URL only when the mast and complete pick coordinates are
+  available; a radii-only snapshot has no plan view.
+- Pick coordinates are carried for the plan view only. They are not
+  re-evaluated and do not alter the capacity checks. Unsupported luffing-jib
+  handling depends on work landing separately; this snapshot preserves whatever
+  status the evaluation supplies.
 - A `NOT_STATED` capacity basis is disclosed but does not gate the verdict, as
   described above.
 - A `NOT_STATED` site, crane or height provenance is likewise disclosed in the
@@ -438,6 +485,15 @@ session lookup, copied-not-recalculated capacities, absent slew/site/T8/T9
 disclosures, the `INCOMPLETE` verdict, S7 validation and printed metadata, the
 exact disclaimer, popup-blocked and success paths, invalid report data and
 cancellation without changing the captured session.
+
+The plan-view follow-up is covered by
+`plugins/tower-planner/test/towerReportPlanView.test.ts`: the hand-worked
+projection above, the coordinate convention and inverted screen Y, deterministic
+output, XML escaping of adversarial labels, S7-compatible data URLs and omission
+for missing or non-finite mast, radius or coordinate geometry.
+`towerReportSnapshot.test.ts`, `towerReportAdapter.test.ts` and
+`towerPickReport.test.ts` additionally cover coordinate copying in pick order,
+copy isolation, adapter omission and captured-report integration.
 
 The snapshot tests retain the hand-worked T8 power-line case:
 

@@ -114,6 +114,13 @@ function notCheckedItems(data: ReportData): string[] {
     return (section.rows ?? []).map((row) => String(row.cells.item));
 }
 
+function decodeDataUrl(dataUrl: string | undefined): string {
+    if (dataUrl === undefined) throw new Error("plan-view data URL is missing");
+    const comma = dataUrl.indexOf(",");
+    if (comma < 0) throw new Error("plan-view data URL has no payload");
+    return decodeURIComponent(dataUrl.slice(comma + 1));
+}
+
 describe("Tower Pick Check report metadata", () => {
     test("accepts complete metadata and a real calendar date", () => {
         expect(isTowerPickReportDate("2026-11-16")).toBe(true);
@@ -172,6 +179,7 @@ describe("captured Pick Check to report state", () => {
         expect(state.craneEvaluation).toEqual(session.evaluation);
         expect(state.craneEvaluation.picks[0].capacityT).toBe(99.9);
         expect(state.craneEvaluation.picks[0].utilisationPct).toBe(2);
+        expect(state.pickCoordinates).toEqual([{ supply: { x: 20, y: 0 }, drop: { x: 0, y: 20 } }]);
         expect(state.oversailReport).toBeNull();
         expect(state.heightReport).toBeNull();
         expect("heightParameters" in state).toBe(false);
@@ -265,5 +273,49 @@ describe("captured Pick Check to S7 report data", () => {
         expect(html).toContain("2026-11-16");
         expect(html).toContain("not recalculated");
         expect(html).not.toContain("Slew angle</td><td>0");
+    });
+
+    test("builds a schematic plan view from the captured coordinates", () => {
+        const data = buildTowerPickReport(capturedSession(), METADATA);
+
+        expect(data.planView?.imageDataUrl).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
+        expect(data.planView?.scaleText).toBe("Schematic — not to scale");
+        expect(data.verdict?.status).toBe("INCOMPLETE");
+
+        const svg = decodeDataUrl(data.planView?.imageDataUrl);
+        expect(svg).toContain("Mast (0, 0)");
+        expect(svg).toContain("P1 pick-up (20, 0)");
+        expect(svg).toContain("P1 set-down (0, 20)");
+        expect(svg).toContain('class="plan-ring"');
+        expect(svg).toContain("Schematic — not to scale");
+
+        const html = generateReportHtml(data);
+        expect(html).toContain('class="plan-view-image"');
+        expect(html).toContain("Tower pick plan view");
+        expect(html).toContain("Schematic — not to scale");
+    });
+
+    test("omits the plan view when a captured session has no pick coordinates", () => {
+        const session = capturedSession();
+        const withoutCoordinates: PickCheckSession = {
+            ...session,
+            picks: session.picks.map((pick) => ({ label: pick.label, loadT: pick.loadT })),
+        };
+        const data = buildTowerPickReport(withoutCoordinates, METADATA);
+
+        expect(data.planView).toBeUndefined();
+        expect(data.verdict?.status).toBe("INCOMPLETE");
+    });
+
+    test("omits malformed coordinates instead of plotting a partial plan view", () => {
+        const session = capturedSession();
+        const malformed: PickCheckSession = {
+            ...session,
+            picks: session.picks.map((pick) => ({ ...pick, supply: { x: Number.NaN, y: 0 } })),
+        };
+        const data = buildTowerPickReport(malformed, METADATA);
+
+        expect(data.planView).toBeUndefined();
+        expect(data.verdict?.status).toBe("INCOMPLETE");
     });
 });

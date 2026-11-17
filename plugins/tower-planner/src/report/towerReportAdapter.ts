@@ -13,6 +13,7 @@ import {
 } from "../../../site-model/src/report";
 import type { HeightParameters } from "../model/heightTypes";
 import type { CatalogueNumber, HeaviestErectionComponent, NotStated } from "../types";
+import { buildTowerReportPlanView } from "./towerReportPlanView";
 import type {
     TowerReportHeight,
     TowerReportNotChecked,
@@ -804,6 +805,7 @@ function buildSources(snapshot: TowerReportSnapshot): readonly ReportSource[] {
  */
 export function buildTowerReportData(snapshot: TowerReportSnapshot): ReportData {
     const siteLocation = snapshot.metadata.siteLocation?.trim();
+    const planView = buildTowerReportPlanView(snapshot);
     const sections: ReportSection[] = [
         buildCraneSection(snapshot),
         buildPicksSection(snapshot),
@@ -831,6 +833,7 @@ export function buildTowerReportData(snapshot: TowerReportSnapshot): ReportData 
             author: snapshot.metadata.author,
             product: "tower-planner",
         },
+        ...(planView === undefined ? {} : { planView }),
         verdict: {
             status: snapshot.verdict,
             title: VERDICT_TITLE,

@@ -2,7 +2,7 @@
 // See LICENSE file in the project root for full license information.
 
 import type { ReportAssumption } from "../../../site-model/src/report";
-import type { CraneEvaluation, PickEvaluation, PickStatus } from "../pickEngine";
+import type { CraneEvaluation, PickEvaluation, PickPoint, PickStatus } from "../pickEngine";
 import type { SourcedNumber, TowerCrane } from "../types";
 import type { HeightCheckReport, HeightParameters } from "./heightTypes";
 import type { OversailReport, OversailSite } from "./oversailTypes";
@@ -59,6 +59,19 @@ export type TowerPlanCraneEvaluation = Omit<CraneEvaluation, "picks"> & {
 };
 
 /**
+ * Optional plan-view geometry for one pick. A Pick Check session captures real
+ * supply and set-down coordinates, but `PickEvaluation` keeps radii only. These
+ * coordinates are carried separately and are index-aligned with
+ * `craneEvaluation.picks`; a coordinate is never derived from a radius.
+ */
+export interface TowerPlanPickCoordinates {
+    /** Horizontal pick-up point in the same site frame as the mast. */
+    readonly supply: PickPoint;
+    /** Horizontal set-down point in the same site frame as the mast. */
+    readonly drop: PickPoint;
+}
+
+/**
  * The complete, serializable input to a T10 report. It holds actual engine and
  * T8/T9 results; the snapshot builder never recalculates them.
  *
@@ -76,6 +89,13 @@ export interface TowerPlanState {
     readonly windKmh: number | null;
 
     readonly craneEvaluation: TowerPlanCraneEvaluation;
+    /**
+     * Optional plan-view supply/drop coordinates, in the same order as
+     * `craneEvaluation.picks`. Omit the field when no genuine coordinates were
+     * captured; the report then omits the plan view instead of inferring points
+     * from the hook radii.
+     */
+    readonly pickCoordinates?: readonly TowerPlanPickCoordinates[];
     readonly oversailReport: OversailReport | null;
     readonly heightReport: HeightCheckReport | null;
     /** Required when `heightReport` is present; absent when T9 was not evaluated. */
