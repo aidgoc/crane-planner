@@ -85,6 +85,10 @@ function set(object: JsonObject, key: string, value: JsonValue): void {
     object[key] = value;
 }
 
+function coordinateFrame(doc: JsonObject): JsonObject {
+    return asObject(doc.coordinate_frame);
+}
+
 function lift(doc: JsonObject): JsonObject {
     return asObject(asArray(doc.lifts)[0]);
 }
@@ -437,6 +441,12 @@ function expectInvalid(doc: JsonObject, keyword: string, path: string): void {
 
 const supportedPurposes = stringEnumAt(schema, ["$defs", "lift", "properties", "purpose", "enum"]);
 
+const axisConventions = [
+    { axis: "x_axis", direction: "east", wrong: "west" },
+    { axis: "y_axis", direction: "north", wrong: "south" },
+    { axis: "z_axis", direction: "up", wrong: "down" },
+] as const;
+
 describe("S8 tower-to-mobile schema", () => {
     // A. Valid example
     test("supplied S8 example validates", () => {
@@ -539,6 +549,54 @@ describe("S8 tower-to-mobile schema", () => {
             const doc = cloneExample();
             remove(doc, field);
             expectInvalid(doc, "required", "$");
+        });
+    }
+
+    // C2. Coordinate frame and absolute pick/set structure
+    test("coordinate_frame declares the agreed +X east, +Y north and +Z up convention", () => {
+        for (const { axis, direction } of axisConventions) {
+            expect(schemaAt(schema, ["properties", "coordinate_frame", "properties", axis, "const"])).toBe(
+                direction,
+            );
+        }
+    });
+
+    for (const { axis, wrong } of axisConventions) {
+        test(`rejects incorrect ${axis} convention: ${wrong}`, () => {
+            const doc = cloneExample();
+            set(coordinateFrame(doc), axis, wrong);
+            expectInvalid(doc, "const", `$.coordinate_frame.${axis}`);
+        });
+    }
+
+    for (const field of ["id", "origin", "x_axis", "y_axis", "z_axis"]) {
+        test(`rejects missing coordinate_frame field: ${field}`, () => {
+            const doc = cloneExample();
+            remove(coordinateFrame(doc), field);
+            expectInvalid(doc, "required", "$.coordinate_frame");
+        });
+    }
+
+    test("accepts negative absolute pick and set coordinates", () => {
+        const doc = cloneExample();
+        set(lift(doc), "pick_xy", { x_m: -4.5, y_m: -2 });
+        set(lift(doc), "set_xy", { x_m: 0, y_m: -10 });
+        expectValid(doc);
+    });
+
+    for (const field of ["pick_xy", "set_xy"]) {
+        test(`rejects crane-relative ${field} structure`, () => {
+            const doc = cloneExample();
+            set(lift(doc), field, { radius_m: 10, slew_deg: 45 });
+            expectInvalid(doc, "additionalProperties", `$.lifts[0].${field}`);
+        });
+
+        test(`rejects ${field} missing required absolute coordinate components`, () => {
+            for (const component of ["x_m", "y_m"]) {
+                const doc = cloneExample();
+                remove(asObject(lift(doc)[field]), component);
+                expectInvalid(doc, "required", `$.lifts[0].${field}`);
+            }
         });
     }
 
