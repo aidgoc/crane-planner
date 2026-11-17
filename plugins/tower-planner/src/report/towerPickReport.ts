@@ -2,7 +2,8 @@
 // See LICENSE file in the project root for full license information.
 
 import type { ReportData } from "../../../site-model/src/report";
-import type { TowerPlanMetadata, TowerPlanState } from "../model/towerPlanState";
+import type { TowerPlanMetadata, TowerPlanPickCoordinates, TowerPlanState } from "../model/towerPlanState";
+import type { PickPoint } from "../pickEngine";
 import type { PickCheckSession } from "./towerPickSession";
 import { buildTowerReportData } from "./towerReportAdapter";
 import { buildTowerReportSnapshot } from "./towerReportSnapshot";
@@ -54,6 +55,33 @@ export function normalizeTowerPickReportMetadata(metadata: TowerPickReportMetada
 }
 
 /**
+ * Copy the captured supply/drop points for the plan view. Capture validates
+ * every point, so a malformed session can only come from a manually built
+ * object; in that case the whole coordinate list is omitted rather than
+ * shifted, truncated or defaulted.
+ */
+function planPickCoordinates(session: PickCheckSession): readonly TowerPlanPickCoordinates[] | undefined {
+    if (session.picks.length === 0) return undefined;
+    if (session.picks.length !== session.evaluation.picks.length) return undefined;
+
+    const coordinates: TowerPlanPickCoordinates[] = [];
+    for (const pick of session.picks) {
+        const supply = pick.supply;
+        const drop = pick.drop;
+        if (!isFinitePoint(supply) || !isFinitePoint(drop)) return undefined;
+        coordinates.push({
+            supply: { x: supply.x, y: supply.y },
+            drop: { x: drop.x, y: drop.y },
+        });
+    }
+    return coordinates;
+}
+
+function isFinitePoint(point: PickPoint | undefined): point is PickPoint {
+    return point !== undefined && Number.isFinite(point.x) && Number.isFinite(point.y);
+}
+
+/**
  * Build the report state from the captured Pick Check. The mast X/Y, crane,
  * jib, wind, picks and selected-crane evaluation are copied from the session;
  * nothing is re-evaluated.
@@ -72,6 +100,8 @@ export function buildTowerPickPlanState(
         throw new RangeError(`Tower pick report metadata is invalid: ${issue}`);
     }
 
+    const pickCoordinates = planPickCoordinates(session);
+
     return {
         metadata: normalizeTowerPickReportMetadata(metadata),
         site: null,
@@ -81,6 +111,7 @@ export function buildTowerPickPlanState(
         jibM: session.jibM,
         windKmh: session.windKmh,
         craneEvaluation: session.evaluation,
+        ...(pickCoordinates === undefined ? {} : { pickCoordinates }),
         oversailReport: null,
         heightReport: null,
     };

@@ -9,6 +9,7 @@ import type { HeightParameters } from "../model/heightTypes";
 import type { OversailSite } from "../model/oversailTypes";
 import type {
     TowerPlanCraneEvaluation,
+    TowerPlanPickCoordinates,
     TowerPlanPickEvaluation,
     TowerPlanState,
 } from "../model/towerPlanState";
@@ -212,10 +213,17 @@ function mapEvaluation(evaluation: TowerPlanCraneEvaluation | undefined): TowerR
     };
 }
 
-function mapPick(pick: TowerPlanPickEvaluation): TowerReportPick {
+function mapPick(
+    pick: TowerPlanPickEvaluation,
+    coordinates: TowerPlanPickCoordinates | undefined,
+): TowerReportPick {
+    const supply = coordinates?.supply;
+    const drop = coordinates?.drop;
     return {
         ...pick,
         status: toMetricStatus(pick.status),
+        ...(supply === undefined ? {} : { supply: clonePoint(supply) }),
+        ...(drop === undefined ? {} : { drop: clonePoint(drop) }),
     };
 }
 
@@ -723,7 +731,8 @@ function buildAssumptions(
  */
 export function buildTowerReportSnapshot(state: TowerPlanState): TowerReportSnapshot {
     const evaluation = state.craneEvaluation;
-    const picks = (evaluation?.picks ?? []).map(mapPick);
+    const pickCoordinates = state.pickCoordinates;
+    const picks = (evaluation?.picks ?? []).map((pick, index) => mapPick(pick, pickCoordinates?.[index]));
     const oversail = mapOversail(state.oversailReport);
     const height = mapHeight(state.heightReport, state.heightParameters);
     const heightParameters = state.heightParameters

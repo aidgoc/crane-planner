@@ -7,6 +7,7 @@ import type {
     SourceStatus,
     VerdictStatus,
 } from "../../../site-model/src/report";
+import type { Point2D } from "../geometry";
 import type { HeightCheckReport, HeightCheckResult, HeightParameters } from "../model/heightTypes";
 import type { OversailCheckResult, OversailSite } from "../model/oversailTypes";
 import type { TowerPlanMetadata, TowerPlanPickEvaluation, TowerPlanPlacement } from "../model/towerPlanState";
@@ -46,6 +47,14 @@ export interface TowerReportEvaluation {
 
 export type TowerReportPick = Readonly<Omit<TowerPlanPickEvaluation, "status">> & {
     readonly status: MetricStatus;
+    /**
+     * Optional plan-view pick-up coordinate copied from the report state. Absent
+     * when the caller supplied radii without coordinates; never inferred from
+     * `supplyRadiusM`.
+     */
+    readonly supply?: Point2D;
+    /** Optional plan-view set-down coordinate; same rules as `supply`. */
+    readonly drop?: Point2D;
 };
 
 export type TowerReportOversailResult = Readonly<Omit<OversailCheckResult, "status">> & {

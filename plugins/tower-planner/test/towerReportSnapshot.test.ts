@@ -1442,6 +1442,56 @@ describe("T10 tower report snapshot", () => {
         });
     });
 
+    test("copies optional plan-view coordinates in pick order", () => {
+        const state = makeState({
+            craneEvaluation: evaluation({ picks: [pick({ label: "P1" }), pick({ label: "P2" })] }),
+            pickCoordinates: [
+                { supply: { x: 20, y: 0 }, drop: { x: 0, y: 20 } },
+                { supply: { x: -5, y: 7 }, drop: { x: 9, y: -3 } },
+            ],
+        });
+        const snapshot = buildTowerReportSnapshot(state);
+
+        expect(snapshot.picks[0].label).toBe("P1");
+        expect(snapshot.picks[0].supply).toEqual({ x: 20, y: 0 });
+        expect(snapshot.picks[0].drop).toEqual({ x: 0, y: 20 });
+        expect(snapshot.picks[1].label).toBe("P2");
+        expect(snapshot.picks[1].supply).toEqual({ x: -5, y: 7 });
+        expect(snapshot.picks[1].drop).toEqual({ x: 9, y: -3 });
+    });
+
+    test("does not invent pick coordinates when the state has none", () => {
+        const snapshot = buildTowerReportSnapshot(makeState());
+
+        expect("supply" in snapshot.picks[0]).toBe(false);
+        expect("drop" in snapshot.picks[0]).toBe(false);
+    });
+
+    test("pick coordinates are copied, not aliased", () => {
+        const state = makeState({
+            pickCoordinates: [{ supply: { x: 20, y: 0 }, drop: { x: 0, y: 20 } }],
+        });
+        const snapshot = buildTowerReportSnapshot(state);
+        const snapshotJson = JSON.stringify(snapshot);
+
+        const coordinates = state.pickCoordinates;
+        if (coordinates === undefined) throw new Error("test pick coordinates are missing");
+        coordinates[0].supply.y = -999;
+        coordinates[0].drop.x = 12345;
+        expect(JSON.stringify(snapshot)).toBe(snapshotJson);
+
+        const rebuilt = buildTowerReportSnapshot(state);
+        const stateJson = JSON.stringify(state);
+        const supply = rebuilt.picks[0].supply;
+        const drop = rebuilt.picks[0].drop;
+        if (supply === undefined || drop === undefined) {
+            throw new Error("snapshot pick coordinates are missing");
+        }
+        supply.x = 999;
+        drop.y = 999;
+        expect(JSON.stringify(state)).toBe(stateJson);
+    });
+
     test("the snapshot is deterministic", () => {
         const state = makeState({ site: structuredClone(SITE) });
         const first = buildTowerReportSnapshot(state);
