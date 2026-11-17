@@ -111,5 +111,29 @@ export const en = {
         "towerplanner.createCrane": "Create Tower Crane",
         "towerplanner.createCrane.help": "Create a tower crane from the catalogue.",
         "towerplanner.craneCreated": "Tower crane created.",
+        "command.tower.report": "Tower Pick Report",
+        "tower.report.help":
+            "Print a report from the last captured Tower Pick Check for the active document.",
+        "tower.report.title": "Tower pick report",
+        "tower.report.intro":
+            "The report uses the captured Pick Check for this document. Enter the metadata below; pick capacities and statuses are copied, not recalculated.",
+        "tower.report.sessionSummary": "Captured crane: {0}; jib {1} m; {2} pick(s); wind {3}.",
+        "tower.report.windNone": "not set",
+        "tower.report.project": "Project",
+        "tower.report.author": "Author",
+        "tower.report.date": "Date",
+        "tower.report.site": "Site location (optional)",
+        "tower.report.siteHint": "Optional site or location description.",
+        "tower.report.invalidProject": "Enter a project name. No report was generated.",
+        "tower.report.invalidAuthor": "Enter an author. No report was generated.",
+        "tower.report.invalidDate": "Enter a real date in YYYY-MM-DD format. No report was generated.",
+        "tower.report.invalidData": "The report data is invalid: {0}. No report was generated.",
+        "tower.report.noDocument":
+            "No document is active. Open or create a document and capture a Tower Pick Check first. No report was generated.",
+        "tower.report.noSession":
+            "No captured Tower Pick Check exists for this document. Open Tower Pick Check and click Capture for report first. No report was generated.",
+        "tower.report.blocked":
+            "The report window was blocked by the browser. Allow pop-ups for this page, then run Tower Pick Report again. No report was generated.",
+        "tower.report.failed": "The report window could not be opened: {0}. No report was generated.",
     } satisfies Record<TowerI18nKey, string>,
 } as unknown as Locale;
