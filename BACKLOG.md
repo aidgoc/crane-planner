@@ -7,6 +7,9 @@ Common rules for every MVP item: metres inside, x1000 at the Chili3D boundary; e
 MVP cut order if late (applies to both teams): 1 travel-time heatmap and two-crane checks (stretch), 2 feasible-position sweep (stretch), 3 tower-erection scenario implementation (stretch), 4 tail-swing 3D ring (keep numeric radius), 5 tie-in level list, 6 PDF -> print-CSS/PNG. Never cut: capacity check, oversail/power-line check, min-distance check, pad reactions, units test, disclaimer.
 
 ### plugins/site-model (Ajit lead; everyone reviews)
+
+Owners (changed 3 Nov 2026 by DGOC to balance load): Ajit owns S1 to S6; Sujal owns S7, reviewed by Anjali (T10) and Ajit (M9) because both reports use it; Anjali owns S8, signed off by Rushikesh for the mobile side.
+
 | # | MVP item | Acceptance test | By |
 |---|---|---|---|
 | S1 | DXF import via dxf-parser (LINE, ARC, LWPOLYLINE, CIRCLE) into project JSON | `sample-site.dxf` loads; the 90 x 72 m plot boundary closes as a loop; NE corner is a true R10 arc (radians converted), area within 0.5 percent of the value computed by hand from the DXF | CI 1 |
@@ -15,8 +18,8 @@ MVP cut order if late (applies to both teams): 1 travel-time heatmap and two-cra
 | S4 | Project JSON schema v1 (boundary, buildings+height, roads, power lines+clearance, no-go, neighbour rule `no_oversail`/`oversail_by_permission`, picks) with save/load round trip | Save then load returns identical data; both plugins read the same file; schema file in repo | CI 1 (schema), CI 2 (round trip) |
 | S5 | PNG/PDF underlay with 2-point scale calibration | Click two points 40 m apart on the sample PNG; measured distance reads 40.0 m within 1 percent | CI 2 |
 | S6 | Polygon draw/edit for building, road, power line (with clearance), no-go | Draw a 10 x 10 m rectangle; area 100 m^2; edit a vertex; undo works | CI 2 |
-| S7 | Shared report helper (one format) used by both products | Both products produce a PDF/PNG with plan view, results table, sources, assumptions, disclaimer | CI 2 (skeleton), freeze for final |
-| S8 | Tower to mobile hand-off JSON schema (component name, mass t, source, pick and set coordinates) | Schema file + one example validates; no code needed | CI 2 |
+| S7 | Shared report helper (one format) used by both products (owner: Sujal) | Both products produce a PDF/PNG with plan view, results table, sources, assumptions, disclaimer | CI 2 (skeleton), freeze for final |
+| S8 | Tower to mobile hand-off JSON schema (component name, mass t, source, pick and set coordinates) (owner: Anjali) | Schema file + one example validates; no code needed | CI 2 |
 
 ### plugins/tower-planner
 | Owner | Item | Acceptance test | By |
@@ -30,7 +33,7 @@ MVP cut order if late (applies to both teams): 1 travel-time heatmap and two-cra
 | Namya | T7 Place/rotate crane, rings for min/max hook radius and counter-jib; 20 m base exclusion ring | Dragging the mast updates rings and the result panel without a calculate button; ring radius = catalogue value (m) | CI 1 (place + rings), CI 2 (live update) |
 | Namya | T8 Oversail checks vs boundary, road, power line, neighbours (both rules), no-go | Same two sample cases appear as messages in the UI with metres: "Jib oversails the school by 2.0 m, no oversail permitted"; `oversail_by_permission` neighbour (nb_east) shows "permission needed" not "fail" | CI 2 |
 | Namya | T9 Height check: hook height vs building + clearance, freestanding height, tie-in list | Tower A 75 m (podium 9 m): required hook height = 75 + clearance (source/INDICATIVE); crane with freestanding height below it returns "tie-in required" and a level list | CI 2 |
-| whole team | T10 Report | PDF/PNG: plan, crane, pick table, failed checks, sources, assumptions, disclaimer | CI 2 (skeleton), freeze |
+| Anjali (whole team contributes) | T10 Report (uses shared helper S7) | PDF/PNG: plan, crane, pick table, failed checks, sources, assumptions, disclaimer | CI 2 (skeleton), freeze |
 | Stretch order | (1) feasible-position grid sweep, (2) travel-time heatmap, (3) two-crane overlap, (4) weathervane envelope | | after MVP green |
 
 ### plugins/mobile-planner
@@ -44,7 +47,7 @@ MVP cut order if late (applies to both teams): 1 travel-time heatmap and two-cra
 | Abhishek | M6 Boom and load as solids at crane position/boom angle; min distance to every building and power line | Sample site: crane at a stated position and boom 20 m at stated angle: min distance to Tower A equals a hand-computed value (+/-0.1 m); red highlight under the clearance limit, with numeric readout | CI 2 |
 | Abhishek | M7 Swing sweep: sample the slew every 2 to 5 degrees between pick and set; report the worst distance and the angle | Pick at 0 deg and set at 90 deg: worst-case angle and distance reported; changing step size changes the answer by less than the 10 cm tolerance | CI 2 |
 | Ajit | M8 Site plugin (above) + crane placement UI with live radius + shared state wiring modules | Move the crane and capacity, pad loads and clearance all update; no stale value | CI 2 |
-| Ajit | M9 Report (shared helper S7) | PDF with plan, verdict, pad loads, clearance, disclaimer | freeze |
+| Ajit | M9 Report (uses Sujal's shared helper S7) | PDF with plan, verdict, pad loads, clearance, disclaimer | freeze |
 | Stretch | Tower-erection scenario read from tower JSON (S8 schema), dismantling last-lift check | | after MVP green |
 
 ### Check-in 1 (Wed 28 Oct) exit bar
