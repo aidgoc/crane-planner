@@ -1,7 +1,7 @@
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "title": "S8 Tower-to-Mobile Handoff",
-    "description": "S8 v1.0.0 contract for transferring lift data from Tower Planner to Mobile Planner. Planning aid, not a certified lift plan. Tower Planner supplies tower/component/location context only and must not include Mobile Planner PASS/FAIL assessments. Mobile Planner converts the absolute site coordinates to its own crane-relative frame and performs its own M2 assessment. A null rigging_mass_t means unknown, never zero: Mobile Planner must report INCOMPLETE before invoking calculateLiftCheck and must not pass null into M2. INCOMPLETE is a Mobile runtime/interface outcome, not an M2 result; M2 outcomes remain PASS, FAIL and UNSUPPORTED.",
+    "description": "S8 v1.0.0 contract for transferring lift data from Tower Planner to Mobile Planner. Planning aid, not a certified lift plan. Tower Planner supplies tower/component/location context only and must not include Mobile Planner PASS/FAIL assessments. Mobile Planner converts the absolute site coordinates to its own crane-relative frame and performs its own M2 assessment. A null rigging_mass_t is structurally valid and means unknown, never zero: Mobile Planner must treat it as INCOMPLETE before invoking calculateLiftCheck and must not pass null into M2. INCOMPLETE is a Mobile runtime/interface outcome, not an M2 result; M2 outcomes remain PASS, FAIL and UNSUPPORTED. JSON Schema does not require a non-empty issues array solely because rigging_mass_t is null; generating the appropriate missing-information issue is a Tower producer/runtime responsibility.",
     "type": "object",
     "additionalProperties": false,
     "required": [
@@ -155,7 +155,7 @@
             "items": {
                 "$ref": "#/$defs/issue"
             },
-            "description": "Warnings or missing-information notices. Missing or insufficient information must be reported here rather than silently replaced with a default. A null component mass or null rigging mass must be accompanied by an issue."
+            "description": "Warnings or missing-information notices. Missing or insufficient information must be reported here rather than silently replaced with a default. A null rigging_mass_t is structurally valid; this schema does not require a non-empty issues array solely because rigging_mass_t is null, so the Tower producer/runtime is responsible for generating the appropriate issue. The Mobile consumer must still treat a null rigging mass as INCOMPLETE before invoking calculateLiftCheck, and calculateLiftCheck must never receive null rigging mass. The same producer/runtime issue-reporting expectation applies when component.mass_t is null with mass_source.kind 'not_stated'."
         }
     },
     "$defs": {
@@ -183,7 +183,7 @@
                 "kind": {
                     "type": "string",
                     "minLength": 1,
-                    "description": "Source classification. 'not_stated' is only valid when component.mass_t is null; any numeric mass needs a traceable source other than 'not_stated'."
+                    "description": "Source classification. 'not_stated' is only valid when component.mass_t is null; any numeric mass needs a traceable source other than 'not_stated'. 'not_stated' declares the absence of a mass value; it does not itself create an issue record, and this schema does not require a non-empty issues array for the null case."
                 },
                 "document": {
                     "type": "string",
@@ -206,7 +206,7 @@
                     "description": "Optional additional reference or note."
                 }
             },
-            "description": "Traceable provenance for component mass. A numeric mass requires a document and a page or section reference."
+            "description": "Traceable provenance for component mass. A numeric mass requires a document and a page or section reference. For a null mass, mass_source is still required and kind must be 'not_stated'; document, page and section are not required for that null declaration. The schema does not require an issues entry solely because the mass is null; the Tower producer/runtime is responsible for reporting the missing information."
         },
         "component": {
             "type": "object",
@@ -221,7 +221,7 @@
                 "mass_t": {
                     "type": ["number", "null"],
                     "exclusiveMinimum": 0,
-                    "description": "Component payload mass only, in tonnes. Excludes rigging mass. Numeric values must be positive; use null when the mass is not stated, never zero as a placeholder. A null value is only permitted with mass_source.kind 'not_stated'."
+                    "description": "Component payload mass only, in tonnes. Excludes rigging mass. Numeric values must be positive; use null when the mass is not stated, never zero as a placeholder. A null value is only permitted with mass_source.kind 'not_stated'. A null mass is structurally valid and must never be interpreted as zero. This schema does not require a non-empty issues array solely because mass_t is null; the Tower producer/runtime is responsible for generating the appropriate missing-information issue. Consumers must not substitute a default or proceed with a definitive assessment until the payload mass is provided or confirmed."
                 },
                 "mass_basis": {
                     "const": "payload_only",
@@ -279,7 +279,7 @@
                     }
                 }
             ],
-            "description": "Component payload and its traceable mass provenance. mass_t never includes rigging mass."
+            "description": "Component payload and its traceable mass provenance. mass_t never includes rigging mass. A null mass_t is valid only with mass_source.kind 'not_stated'; it is not zero and is not made structurally invalid by an empty issues array."
         },
         "lift": {
             "type": "object",
@@ -314,7 +314,7 @@
                 "rigging_mass_t": {
                     "type": ["number", "null"],
                     "minimum": 0,
-                    "description": "Rigging mass in tonnes, separate from component.mass_t. A non-negative number is valid; null means unknown or unconfirmed, never zero. When null, Mobile Planner must report INCOMPLETE before invoking calculateLiftCheck, must not invoke calculateLiftCheck with null, and must obtain or confirm a numeric rigging mass and include it in the total suspended load before any definitive assessment."
+                    "description": "Rigging mass in tonnes, separate from component.mass_t. A non-negative number or null is structurally valid; null means unknown or unconfirmed, never zero. A null value does not by itself make the payload structurally invalid, and this schema does not require a non-empty issues array solely because rigging_mass_t is null; generating the appropriate missing-information issue is a Tower producer/runtime responsibility. Mobile Planner must treat null as INCOMPLETE at the runtime/interface level before calculateLiftCheck is invoked. calculateLiftCheck must never receive a null rigging mass. INCOMPLETE is a runtime/interface assessment state, not a new M2 calculation outcome; M2 outcomes remain PASS, FAIL and UNSUPPORTED. Mobile must obtain or confirm a numeric rigging mass and include it in the total suspended load before any definitive assessment; once all required numeric inputs are present, it may invoke the existing M2 calculateLiftCheck."
                 },
                 "coordinate_source": {
                     "type": "string",
@@ -322,7 +322,7 @@
                     "description": "Provenance of the absolute pick/set coordinates."
                 }
             },
-            "description": "One lift. Pick and set points are absolute site coordinates; Mobile Planner converts them to its own crane-relative frame before M2 assessment."
+            "description": "One lift. Pick and set points are absolute site coordinates; Mobile Planner converts them to its own crane-relative frame before M2 assessment. rigging_mass_t is required but may be null; a null value is structurally valid and is handled as INCOMPLETE by Mobile runtime before calculateLiftCheck."
         },
         "issue": {
             "type": "object",
