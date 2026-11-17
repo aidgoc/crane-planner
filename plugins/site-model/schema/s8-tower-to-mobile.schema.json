@@ -244,6 +244,7 @@
                     "then": {
                         "properties": {
                             "mass_source": {
+                                "type": "object",
                                 "properties": {
                                     "kind": {
                                         "const": "not_stated"
@@ -265,6 +266,7 @@
                     "then": {
                         "properties": {
                             "mass_source": {
+                                "type": "object",
                                 "properties": {
                                     "kind": {
                                         "not": {
@@ -273,7 +275,10 @@
                                     }
                                 },
                                 "required": ["document"],
-                                "anyOf": [{ "required": ["page"] }, { "required": ["section"] }]
+                                "anyOf": [
+                                    { "type": "object", "required": ["page"] },
+                                    { "type": "object", "required": ["section"] }
+                                ]
                             }
                         }
                     }
@@ -314,7 +319,7 @@
                 "rigging_mass_t": {
                     "type": ["number", "null"],
                     "minimum": 0,
-                    "description": "Rigging mass in tonnes, separate from component.mass_t. A non-negative number or null is structurally valid; null means unknown or unconfirmed, never zero. A null value does not by itself make the payload structurally invalid, and this schema does not require a non-empty issues array solely because rigging_mass_t is null; generating the appropriate missing-information issue is a Tower producer/runtime responsibility. Mobile Planner must treat null as INCOMPLETE at the runtime/interface level before calculateLiftCheck is invoked. calculateLiftCheck must never receive a null rigging mass. INCOMPLETE is a runtime/interface assessment state, not a new M2 calculation outcome; M2 outcomes remain PASS, FAIL and UNSUPPORTED. Mobile must obtain or confirm a numeric rigging mass and include it in the total suspended load before any definitive assessment; once all required numeric inputs are present, it may invoke the existing M2 calculateLiftCheck."
+                    "description": "Rigging mass in tonnes, separate from component.mass_t. A non-negative number or null is structurally valid; null means unknown or unconfirmed, never zero. A numeric 0 is structurally valid but is a deliberate value meaning no rigging mass; it must never be used as a placeholder for unknown, which is null. A null value does not by itself make the payload structurally invalid, and this schema does not require a non-empty issues array solely because rigging_mass_t is null; generating the appropriate missing-information issue is a Tower producer/runtime responsibility. Mobile Planner must treat null as INCOMPLETE at the runtime/interface level before calculateLiftCheck is invoked. calculateLiftCheck must never receive a null rigging mass. INCOMPLETE is a runtime/interface assessment state, not a new M2 calculation outcome; M2 outcomes remain PASS, FAIL and UNSUPPORTED. Mobile must obtain or confirm a numeric rigging mass and include it in the total suspended load before any definitive assessment; once all required numeric inputs are present, it may invoke the existing M2 calculateLiftCheck."
                 },
                 "coordinate_source": {
                     "type": "string",

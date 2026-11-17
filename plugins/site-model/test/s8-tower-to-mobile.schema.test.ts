@@ -22,6 +22,7 @@ interface JsonObject {
     additionalProperties?: JsonValue;
     allOf?: JsonValue;
     anyOf?: JsonValue;
+    component?: JsonValue;
     const?: JsonValue;
     description?: JsonValue;
     else?: JsonValue;
@@ -30,6 +31,8 @@ interface JsonObject {
     format?: JsonValue;
     if?: JsonValue;
     items?: JsonValue;
+    lifts?: JsonValue;
+    mass_source?: JsonValue;
     minItems?: JsonValue;
     minLength?: JsonValue;
     minimum?: JsonValue;
@@ -83,15 +86,15 @@ function set(object: JsonObject, key: string, value: JsonValue): void {
 }
 
 function lift(doc: JsonObject): JsonObject {
-    return asObject(asArray(doc["lifts"])[0]);
+    return asObject(asArray(doc.lifts)[0]);
 }
 
 function component(doc: JsonObject): JsonObject {
-    return asObject(lift(doc)["component"]);
+    return asObject(lift(doc).component);
 }
 
 function massSource(doc: JsonObject): JsonObject {
-    return asObject(component(doc)["mass_source"]);
+    return asObject(component(doc).mass_source);
 }
 
 function schemaAt(root: JsonObject, keys: readonly string[]): JsonValue {
@@ -334,6 +337,95 @@ function collectRefs(value: unknown, refs: string[] = []): string[] {
     return refs;
 }
 
+const SUPPORTED_SCHEMA_KEYWORDS: ReadonlySet<string> = new Set([
+    "$schema",
+    "$ref",
+    "$defs",
+    "title",
+    "description",
+    "type",
+    "const",
+    "enum",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+    "minItems",
+    "minLength",
+    "minimum",
+    "exclusiveMinimum",
+    "format",
+    "allOf",
+    "anyOf",
+    "not",
+    "if",
+    "then",
+    "else",
+]);
+
+/**
+ * Walk schema positions only. Keys under `properties` and `$defs` are names, not
+ * keywords, so the walker descends into their values instead of checking the names.
+ */
+function collectUnsupportedKeywords(
+    currentSchema: unknown,
+    path = "$",
+    unsupported: string[] = [],
+): string[] {
+    if (typeof currentSchema === "boolean") {
+        return unsupported;
+    }
+    if (!isObject(currentSchema)) {
+        unsupported.push(`${path}: expected an object or boolean schema`);
+        return unsupported;
+    }
+
+    for (const [keyword, value] of Object.entries(currentSchema)) {
+        if (value === undefined) {
+            continue;
+        }
+        if (!SUPPORTED_SCHEMA_KEYWORDS.has(keyword)) {
+            unsupported.push(`${path}/${keyword}`);
+            continue;
+        }
+
+        switch (keyword) {
+            case "properties":
+            case "$defs":
+                if (isObject(value)) {
+                    for (const [name, childSchema] of Object.entries(value)) {
+                        collectUnsupportedKeywords(childSchema, `${path}/${keyword}/${name}`, unsupported);
+                    }
+                }
+                break;
+            case "items":
+            case "not":
+            case "if":
+            case "then":
+            case "else":
+                collectUnsupportedKeywords(value, `${path}/${keyword}`, unsupported);
+                break;
+            case "allOf":
+            case "anyOf":
+                if (Array.isArray(value)) {
+                    value.forEach((branch, index) => {
+                        collectUnsupportedKeywords(branch, `${path}/${keyword}/${index}`, unsupported);
+                    });
+                }
+                break;
+            case "additionalProperties":
+                if (isObject(value)) {
+                    collectUnsupportedKeywords(value, `${path}/${keyword}`, unsupported);
+                }
+                break;
+            default:
+                break;
+        }
+    }
+
+    return unsupported;
+}
+
 function expectValid(doc: JsonObject): void {
     expect(validate(doc, schema, schema)).toEqual([]);
 }
@@ -362,6 +454,36 @@ describe("S8 tower-to-mobile schema", () => {
         for (const ref of refs) {
             expect(() => resolveRef(schema, ref)).not.toThrow();
         }
+    });
+
+    test("validator implements every keyword used by the schema", () => {
+        expect(collectUnsupportedKeywords(schema)).toEqual([]);
+    });
+
+    test("keyword guard reports unsupported validation keywords", () => {
+        const fakeSchema: JsonObject = {
+            type: "array",
+            uniqueItems: true,
+            items: { type: "string", pattern: "^[a-z]+$" },
+        };
+
+        expect(collectUnsupportedKeywords(fakeSchema)).toEqual(["$/uniqueItems", "$/items/pattern"]);
+    });
+
+    test("keyword guard does not treat property or definition names as keywords", () => {
+        const fakeSchema: JsonObject = {
+            $defs: {
+                required: { type: "string" },
+                type: { type: "string" },
+            },
+            type: "object",
+            properties: {
+                required: { type: "string" },
+                type: { type: "string" },
+            },
+        };
+
+        expect(collectUnsupportedKeywords(fakeSchema)).toEqual([]);
     });
 
     // B. Rigging mass
@@ -520,7 +642,7 @@ describe("S8 tower-to-mobile schema", () => {
     test("accepts null component mass with not_stated provenance", () => {
         const doc = cloneExample();
         set(component(doc), "mass_t", null);
-        component(doc)["mass_source"] = { kind: "not_stated" };
+        component(doc).mass_source = { kind: "not_stated" };
         expectValid(doc);
     });
 
@@ -533,7 +655,7 @@ describe("S8 tower-to-mobile schema", () => {
     test("accepts null component mass with not_stated and empty issues", () => {
         const doc = cloneExample();
         set(component(doc), "mass_t", null);
-        component(doc)["mass_source"] = { kind: "not_stated" };
+        component(doc).mass_source = { kind: "not_stated" };
         set(doc, "issues", []);
         expectValid(doc);
     });
@@ -542,6 +664,10 @@ describe("S8 tower-to-mobile schema", () => {
     test("documents producer/runtime issue responsibility and INCOMPLETE contract", () => {
         const riggingDescription = descriptionAt(schema, ["$defs", "lift", "properties", "rigging_mass_t"]);
         expect(riggingDescription).toContain("structurally valid");
+        expect(riggingDescription).toContain(
+            "A numeric 0 is structurally valid but is a deliberate value meaning no rigging mass; " +
+                "it must never be used as a placeholder for unknown, which is null.",
+        );
         expect(riggingDescription).toContain("producer/runtime");
         expect(riggingDescription).toContain("INCOMPLETE");
         expect(riggingDescription).toContain("calculateLiftCheck");
