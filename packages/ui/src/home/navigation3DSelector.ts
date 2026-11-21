@@ -10,7 +10,7 @@ export const Navigation3DSelector = (props: HTMLProps<HTMLElement>) => {
         nav3DTypes.push(
             option({
                 selected: nav3DType === Config.instance.navigation3D,
-                textContent: nav3DType,
+                textContent: nav3DType === "Chili3d" ? "Default" : nav3DType,
             }),
         ),
     );

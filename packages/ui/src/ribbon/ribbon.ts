@@ -95,7 +95,7 @@ export class RibbonUI extends HTMLElement {
             div(
                 { className: style.appIcon, onclick: () => PubSub.default.pub("displayHome", true) },
                 svg({ className: style.icon, icon: "icon-chili" }),
-                span({ id: "appName", textContent: `Chili3D - v${__APP_VERSION__}` }),
+                span({ id: "appName", textContent: "DGOC Crane Planner" }),
             ),
             div(
                 { className: style.ribbonTitlePanel },
@@ -183,7 +183,7 @@ export class RibbonUI extends HTMLElement {
         return div(
             { className: style.right },
             a(
-                { href: "https://github.com/xiangechen/chili3d", target: "_blank" },
+                { href: "https://github.com/aidgoc/crane-planner", target: "_blank" },
                 svg({ title: "Github", className: style.icon, icon: "icon-github" }),
             ),
         );

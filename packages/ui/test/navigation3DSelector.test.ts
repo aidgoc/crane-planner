@@ -30,7 +30,9 @@ describe("Navigation3DSelector", () => {
 
         const options = selector.querySelectorAll("option");
         expect(options.length).toBe(Navigation3DTypes.length);
-        expect(options[0].textContent).toBe(Navigation3DTypes[0]);
+        expect(Navigation3DTypes[0]).toBe("Chili3d");
+        expect(options[0].textContent).toBe("Default");
+        expect(options[1].textContent).toBe(Navigation3DTypes[1]);
     });
 
     test("should mark the current navigation3D type as selected", () => {

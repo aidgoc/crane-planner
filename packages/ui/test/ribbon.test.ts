@@ -153,13 +153,13 @@ describe("RibbonUI", () => {
         expect(ui.querySelector(".r-title-bar")).not.toBeNull();
 
         const appName = mustQuery(ui, "#appName");
-        expect(appName.textContent).toContain("Chili3D - v");
+        expect(appName.textContent).toBe("DGOC Crane Planner");
     });
 
     test("should render github link", () => {
         const { ui } = createRibbonUI();
         const link = mustQuery(ui, "a");
-        expect(link.getAttribute("href")).toBe("https://github.com/xiangechen/chili3d");
+        expect(link.getAttribute("href")).toBe("https://github.com/aidgoc/crane-planner");
     });
 
     test("should render ribbon groups for each tab", () => {
